@@ -175,8 +175,11 @@ async function createHarness(
 }
 
 function completionResponse(context) {
-	const goalId = /<goal_id>\s*([^<\s]+)\s*<\/goal_id>/.exec(context.systemPrompt ?? "")?.[1];
-	assert.ok(goalId, "expected goal id in continuation system prompt");
+	const goalContext = [context.systemPrompt ?? "", ...context.messages.map(userMessageText)].join(
+		"\n",
+	);
+	const goalId = /<goal_id>\s*([^<\s]+)\s*<\/goal_id>/.exec(goalContext)?.[1];
+	assert.ok(goalId, "expected goal id in continuation context");
 	return fauxAssistantMessage(
 		fauxToolCall("goal_complete", {
 			goal_id: goalId,
@@ -253,6 +256,42 @@ async function normalContinuationScenario() {
 		);
 	} finally {
 		unsubscribe();
+		await harness.cleanup();
+	}
+}
+
+async function agentCreatedGoalScenario() {
+	const harness = await createHarness([
+		fauxAssistantMessage(
+			fauxToolCall("create_goal", {
+				objective: "complete an agent-created runtime Goal",
+				token_budget: 50_000,
+			}),
+		),
+		completionResponse,
+	]);
+	try {
+		assert.ok(harness.session.getAllTools().some(({ name }) => name === "create_goal"));
+		await harness.session.prompt("Explicitly create a Goal for the requested runtime smoke.");
+		await waitFor(() => harness.faux.state.callCount === 2, "agent-created Goal kickoff");
+		await harness.session.agent.waitForIdle();
+		assert.equal(persistedGoalStatus(harness.session), null);
+		assert.ok(
+			persistedGoalHistory(harness.session).some(
+				(goal) =>
+					goal.text === "complete an agent-created runtime Goal" &&
+					goal.tokenBudget === 50_000 &&
+					goal.iteration === 0,
+			),
+			"expected canonical agent-created Goal state before its kickoff",
+		);
+		assert.equal(
+			harness.session.messages
+				.map(userMessageText)
+				.filter((text) => text.includes("pi-goal-prompt:")).length,
+			1,
+		);
+	} finally {
 		await harness.cleanup();
 	}
 }
@@ -830,6 +869,7 @@ async function manualCompactionScenario() {
 }
 
 await agentDirectoryIsolationScenario();
+await agentCreatedGoalScenario();
 await normalContinuationScenario();
 await runawayNoProgressScenario();
 await automaticToolLoopLimitScenario();
@@ -848,5 +888,5 @@ await managedRunRpcScenario();
 await managedRunDisabledScenario();
 await manualCompactionScenario();
 console.log(
-	"pi-goal runtime smoke: normal, runaway guards, retry and busy-edit ownership, ordered queue, queued input, pause, frozen-queue and stale blocked-tool aborts, managed-run RPC, bounded budget behavior, and manual compaction passed",
+	"pi-goal runtime smoke: agent-created Goal, normal continuation, runaway guards, retry and busy-edit ownership, ordered queue, queued input, pause, frozen-queue and stale blocked-tool aborts, managed-run RPC, bounded budget behavior, and manual compaction passed",
 );
