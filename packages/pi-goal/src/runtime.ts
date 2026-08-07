@@ -232,6 +232,15 @@ export class GoalRuntime {
 		this.toolPolicy = new GoalToolPolicy(pi);
 	}
 
+	hasUnfinishedGoalState() {
+		return (
+			(this.activeGoal !== undefined && this.activeGoal.status !== "complete") ||
+			this.queuedGoals.length > 0 ||
+			this.pendingQueueAction !== undefined ||
+			this.queueFrozen
+		);
+	}
+
 	setGoalStateSink(sink: ((snapshot: GoalStateSnapshot) => void) | undefined) {
 		this.goalStateSink = sink;
 	}

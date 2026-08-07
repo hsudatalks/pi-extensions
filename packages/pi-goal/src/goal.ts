@@ -18,7 +18,7 @@ function registerGoalRuntime(pi: ExtensionAPI, options: GoalOptions = {}) {
 	// Keep registration order explicit: managed-run bus listeners exist before tools,
 	// command routing, and session lifecycle bind the per-factory runtime.
 	runController.register(pi);
-	registerGoalTools(pi, runtime);
+	registerGoalTools(pi, runtime, commands);
 	registerGoalCommand(pi, runtime, commands, options);
 	registerGoalLifecycle(pi, runtime, commands, runController, options);
 }
@@ -42,7 +42,6 @@ export {
 } from "./command.js";
 
 export { buildGoalSystemPrompt } from "./prompts.js";
-
 export {
 	findFinalAssistantMessage,
 	formatStatus,
@@ -50,3 +49,4 @@ export {
 	isRetryableGoalInterruption,
 	isUsageLimitedGoalInterruption,
 } from "./runtime.js";
+export { CREATE_GOAL_TOOL } from "./tools.js";

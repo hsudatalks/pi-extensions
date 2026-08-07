@@ -27,7 +27,7 @@ test("experimental mode keeps singular registration and exposes canonical queue 
 	assert.deepEqual([...harness.mock.commands.keys()], ["goal"]);
 	assert.deepEqual(
 		harness.mock.tools.map(({ name }) => name),
-		["goal_complete", "goal_blocked"],
+		["create_goal", "goal_complete", "goal_blocked"],
 	);
 	assert.equal(harness.mock.commands.has("goals"), false);
 	assert.deepEqual(

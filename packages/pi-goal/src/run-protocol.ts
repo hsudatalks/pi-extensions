@@ -208,7 +208,7 @@ export class GoalRunController {
 			this.emitError(runId, "start", "RUN_ID_IN_USE", "runId was already used in this session.");
 			return;
 		}
-		if (this.runtime.activeGoal || (this.run && !this.run.closed)) {
+		if (this.runtime.hasUnfinishedGoalState() || (this.run && !this.run.closed)) {
 			this.emitError(runId, "start", "GOAL_ALREADY_EXISTS", "A Goal already exists.");
 			return;
 		}

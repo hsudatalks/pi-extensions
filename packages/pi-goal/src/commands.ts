@@ -31,6 +31,10 @@ import {
 	transitionGoal,
 } from "./runtime.js";
 
+export type GoalCreationResult =
+	| { kind: "started"; goal: ActiveGoal }
+	| { kind: "rejected"; reason: string };
+
 // User-command mutations are kept separate from Pi event wiring. Every controller
 // receives exactly one per-factory GoalRuntime, preserving session isolation.
 export class GoalCommandController {
@@ -40,6 +44,46 @@ export class GoalCommandController {
 		this.runtime = runtime;
 	}
 
+	async createGoalWithoutReplacement(
+		objective: string,
+		tokenBudget: number | undefined,
+		ctx: StatusContext,
+		isRequestCurrent?: () => boolean,
+	): Promise<GoalCreationResult> {
+		if (isRequestCurrent && !isRequestCurrent()) {
+			return { kind: "rejected", reason: "the create request was cancelled" };
+		}
+		const validationError = validateObjective(objective);
+		if (validationError) return { kind: "rejected", reason: validationError };
+		if (tokenBudget !== undefined && (!Number.isSafeInteger(tokenBudget) || tokenBudget <= 0)) {
+			return { kind: "rejected", reason: "token_budget must be a positive safe integer" };
+		}
+
+		if (this.runtime.hasUnfinishedGoalState()) {
+			return {
+				kind: "rejected",
+				reason: "an unfinished Goal already exists; complete or clear it before creating another",
+			};
+		}
+
+		// The tool call belongs to the ordinary user turn that requested the Goal,
+		// not to the new Goal. Excluding it prevents premature usage, iteration, and
+		// continuation accounting before the owned kickoff prompt starts.
+		this.runtime.beginAgentRun(null, undefined);
+		const startedGoal = await this.startGoal(
+			objective.trim(),
+			tokenBudget,
+			ctx,
+			undefined,
+			undefined,
+			isRequestCurrent,
+		);
+		if (!startedGoal) {
+			return { kind: "rejected", reason: "Goal activation failed before kickoff" };
+		}
+		return { kind: "started", goal: startedGoal };
+	}
+
 	async startGoal(
 		objective: string,
 		tokenBudget: number | undefined,
@@ -47,7 +91,7 @@ export class GoalCommandController {
 		onActivated?: (goal: ActiveGoal) => void,
 		isActivationCurrent?: (goal: ActiveGoal) => boolean,
 		isRequestCurrent?: () => boolean,
-	) {
+	): Promise<ActiveGoal | undefined> {
 		if (isRequestCurrent && !isRequestCurrent()) return;
 		const validationError = validateObjective(objective);
 		if (validationError) {
@@ -185,6 +229,7 @@ export class GoalCommandController {
 			}`,
 			automaticLimit === null ? "warning" : "info",
 		);
+		return startedGoal;
 	}
 
 	async addGoal(objective: string, tokenBudget: number | undefined, ctx: StatusContext) {

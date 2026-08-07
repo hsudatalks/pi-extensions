@@ -6,6 +6,7 @@ import {
 	truncateHead,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import type { GoalCommandController } from "./commands.js";
 import { notifyTerminal, safeTerminalText } from "./errors.js";
 import {
 	formatStatus,
@@ -26,6 +27,13 @@ interface GoalCompleteDetails {
 	summary: string;
 }
 
+interface GoalCreateDetails {
+	objective: string;
+	goal_id?: string;
+	status: "started" | "rejected";
+	token_budget?: number;
+}
+
 interface GoalBlockedDetails {
 	goal: string;
 	goal_id: string;
@@ -39,7 +47,66 @@ const MAX_COMPLETION_SUMMARY_LENGTH = 4_000;
 const MAX_BLOCKER_REASON_LENGTH = 1_000;
 const MAX_BLOCKER_EVIDENCE_LENGTH = 4_000;
 
-export function registerGoalTools(pi: ExtensionAPI, runtime: GoalRuntime) {
+export const CREATE_GOAL_TOOL = "create_goal";
+
+export function registerGoalTools(
+	pi: ExtensionAPI,
+	runtime: GoalRuntime,
+	commands: GoalCommandController,
+) {
+	const createGoalTool = defineTool({
+		name: CREATE_GOAL_TOOL,
+		label: "Create Goal",
+		description:
+			"Create and start one autonomous /goal only when the user explicitly asks to create or start a Goal. Never infer a Goal from an ordinary task. Refuses to replace any unfinished Goal or queue.",
+		promptSnippet: "Create a /goal only after an explicit user request",
+		promptGuidelines: [
+			"Call create_goal only when the user explicitly asks to create or start a Goal; never infer this intent from an ordinary task request.",
+			"Do not call create_goal to replace, edit, queue, resume, or restart a Goal. If any unfinished Goal exists, keep it and report the rejection.",
+			"Set token_budget only when the user explicitly requests a token budget.",
+		],
+		parameters: Type.Object({
+			objective: Type.String({
+				minLength: 1,
+				maxLength: MAX_GOAL_TEXT_LENGTH,
+				description: "The concrete objective the user explicitly asked the Goal to pursue.",
+			}),
+			token_budget: Type.Optional(
+				Type.Integer({
+					minimum: 1,
+					maximum: Number.MAX_SAFE_INTEGER,
+					description:
+						"Optional cumulative token budget. Omit unless the user explicitly requested one.",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+			const objective = typeof params.objective === "string" ? params.objective.trim() : "";
+			const tokenBudget = typeof params.token_budget === "number" ? params.token_budget : undefined;
+			const result = await commands.createGoalWithoutReplacement(
+				objective,
+				tokenBudget,
+				ctx,
+				() => signal?.aborted !== true,
+			);
+
+			if (result.kind === "rejected") {
+				const rejection = `Goal creation rejected: ${result.reason}.`;
+				notifyTerminal(ctx.ui, rejection, "warning");
+				return {
+					content: toolContent(rejection),
+					details: creationDetails(objective, tokenBudget, "rejected"),
+				};
+			}
+
+			return {
+				content: toolContent(`Goal created: ${objective}`),
+				details: creationDetails(objective, tokenBudget, "started", result.goal.id),
+				terminate: true,
+			};
+		},
+	});
+
 	const goalCompleteTool = defineTool({
 		name: GOAL_COMPLETE_TOOL,
 		label: "Goal Complete",
@@ -298,6 +365,7 @@ export function registerGoalTools(pi: ExtensionAPI, runtime: GoalRuntime) {
 		},
 	});
 
+	pi.registerTool(createGoalTool);
 	pi.registerTool(goalCompleteTool);
 	pi.registerTool(goalBlockedTool);
 }
@@ -319,6 +387,20 @@ function completionDetails(goal: string, goalId: string, summary: string): GoalC
 		goal: goal.slice(0, MAX_GOAL_TEXT_LENGTH),
 		goal_id: goalId.slice(0, MAX_GOAL_ID_LENGTH),
 		summary: summary.slice(0, MAX_COMPLETION_SUMMARY_LENGTH),
+	};
+}
+
+function creationDetails(
+	objective: string,
+	tokenBudget: number | undefined,
+	status: GoalCreateDetails["status"],
+	goalId?: string,
+): GoalCreateDetails {
+	return {
+		objective: objective.slice(0, MAX_GOAL_TEXT_LENGTH),
+		...(goalId ? { goal_id: goalId.slice(0, MAX_GOAL_ID_LENGTH) } : {}),
+		status,
+		...(tokenBudget === undefined ? {} : { token_budget: tokenBudget }),
 	};
 }
 
