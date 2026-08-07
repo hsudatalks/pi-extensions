@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/@narumitw/pi-goal)](https://www.npmjs.com/package/@narumitw/pi-goal) [![Pi extension](https://img.shields.io/badge/Pi-extension-blue)](https://pi.dev) [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
-`@narumitw/pi-goal` is a native [Pi coding agent](https://pi.dev) extension that adds session-scoped `/goal` commands, a `goal_complete({ goal_id, summary })` completion tool, and a strict `goal_blocked({ goal_id, reason, evidence, repeated_turns })` impasse tool for autonomous, verifiable task completion. An opt-in experimental mode adds an ordered queue without introducing a second command or tool namespace.
+`@narumitw/pi-goal` is a native [Pi coding agent](https://pi.dev) extension that adds session-scoped `/goal` commands, an explicit-intent `create_goal({ objective, token_budget? })` tool, a `goal_complete({ goal_id, summary })` completion tool, and a strict `goal_blocked({ goal_id, reason, evidence, repeated_turns })` impasse tool for autonomous, verifiable task completion. An opt-in experimental mode adds an ordered queue without introducing a second command namespace.
 
 Goal mode uses Codex-like persistence instructions and sends guarded continuation messages from Pi's fully settled idle boundary until the agent completes the goal, the user pauses or clears it, a safety circuit breaker trips, a true blocker or provider usage limit stops it, or an optional token budget is reached. With ordered goals enabled, the same lifecycle advances through queued objectives one at a time.
 
@@ -20,9 +20,10 @@ Goal mode uses Codex-like persistence instructions and sends guarded continuatio
 - Supports optional token budgets such as `/goal --tokens 100k <goal>`, using provider-reported total-token accounting with a cache-inclusive compatibility fallback.
 - Tracks distinct `active`, `paused`, `blocked`, `usage_limited`, `budget_limited`, and `complete` states.
 - Stores goal state in the current Pi session, following Codex's thread-owned goal model instead of using a global per-directory goal. Experimental queues keep independent budget, usage, elapsed-time, iteration, status, and stale-id accounting for every item.
+- Registers `create_goal({ objective, token_budget? })` so the main agent can start Goal mode only after an explicit user request. It never replaces, edits, queues, resumes, or restarts an unfinished Goal, and it omits a token budget unless the user explicitly supplied one.
 - Registers a `goal_complete({ goal_id, summary })` tool for explicit completion, requiring the current goal id and rejecting missing/stale ids plus plainly contradictory summaries such as “not complete” or “tests still fail”.
 - Registers `goal_blocked({ goal_id, reason, evidence, repeated_turns })` for true impasses only; it requires the current goal id, concrete evidence, and the same blocker recurring for at least three consecutive goal turns.
-- Keeps both goal tools active by default for a stable tool schema; optional `"after-first-goal"` visibility hides them until the first accepted `/goal` activation or an unfinished goal is restored, then keeps them desired for the rest of that extension runtime without overriding a restrictive restore policy.
+- Keeps both terminal Goal tools active by default for a stable tool schema; optional `"after-first-goal"` visibility hides them until the first accepted Goal activation or an unfinished goal is restored, then keeps them desired for the rest of that extension runtime without overriding a restrictive restore policy. `create_goal` remains a separate initiation tool and still uses the same activation policy before starting work.
 - Records continuation and queue-transition intent, then triggers exactly one next turn only after Pi reports the agent fully settled, idle, and free of pending messages; if terminal tools disappear during a tool loop or before the next queued goal starts, pauses before another model turn.
 - Lets retry, compaction, steering, follow-up, and other queued work settle before automatic goal continuation.
 - Separates user interruption (`paused`), true impasse or terminal non-usage error (`blocked`), provider/account quota exhaustion (`usage_limited`), and user token budget exhaustion (`budget_limited`).
@@ -108,7 +109,13 @@ Omitted fields use the defaults above. Invalid or malformed existing settings ar
 restores only the exact tools that pi-goal previously hid, while switching to
 `"after-first-goal"` locks a runtime that has no unfinished goal.
 
-Tool visibility is a baseline, not ownership of Pi's global active-tool list. Plan mode or another restrictive policy may temporarily hide the tools. pi-goal does not fight that policy on restore or on every turn: activation is rejected if both tools cannot be made available, and an already-active goal is paused without automatic continuation if they disappear. The pause aborts a Goal-owned kickoff, resume, active-edit, or automatic-continuation prompt, but it does not cancel or stale-block an unrelated user or extension turn, including startup follow-ups after a restrictive restore.
+Tool visibility is a baseline, not ownership of Pi's global active-tool list. Plan mode or another restrictive policy may temporarily hide the tools. pi-goal does not fight that policy on restore or on every turn: activation is rejected if both terminal tools cannot be made available, and an already-active goal is paused without automatic continuation if they disappear. The pause aborts a Goal-owned kickoff, resume, active-edit, or automatic-continuation prompt, but it does not cancel or stale-block an unrelated user or extension turn, including startup follow-ups after a restrictive restore.
+
+## 🤖 Agent-created Goals
+
+The main agent may call `create_goal` only when the user explicitly asks it to create or start a Goal. Ordinary task requests must not be converted into Goals implicitly. The tool accepts one concrete `objective` and an optional positive safe-integer `token_budget`; the budget must be omitted unless the user requested it.
+
+Creation is fail-closed. Any active, paused, blocked, usage-limited, budget-limited, queued, frozen, or transitioning Goal state rejects the call without confirmation or replacement. A successful call uses the same canonical activation, persistence, prompt ownership, safety, and continuation path as `/goal`, then terminates the requesting ordinary turn so the owned kickoff can begin. That requesting turn is excluded from the new Goal's usage, iteration, and continuation accounting.
 
 ## 🚀 Commands
 
