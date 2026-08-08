@@ -50,8 +50,10 @@ if [ "$READ_OPENCODE_KEY" -eq 1 ]; then
 fi
 
 mkdir -p "$HOME/.local/bin"
-npm install --global --prefix "$HOME/.local" "@earendil-works/pi-coding-agent@$PI_VERSION"
 PI_BIN="$HOME/.local/bin/pi"
+if [ ! -x "$PI_BIN" ] || [ "$("$PI_BIN" --version 2>/dev/null || true)" != "$PI_VERSION" ]; then
+	npm install --global --prefix "$HOME/.local" "@earendil-works/pi-coding-agent@$PI_VERSION"
+fi
 
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT HUP INT TERM
