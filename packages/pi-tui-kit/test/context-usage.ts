@@ -7,10 +7,12 @@ import {
 	type ReviewScreen,
 	type RunConfirmationResult,
 	type RunCustomInteractionResult,
+	type RunLiveChoiceResult,
 	type RunMenuResult,
 	type RunTaskResult,
 	runConfirmation,
 	runCustomInteraction,
+	runLiveChoice,
 	runMenu,
 	runTask,
 } from "../src/index.js";
@@ -186,6 +188,39 @@ void runCustomInteraction(lifecycleContext, {
 		// @ts-expect-error Lifecycle custom interactions must not gain command-only session methods.
 		handleInput: () => void ctx.waitForIdle(),
 	}),
+});
+
+const commandLiveChoice: Promise<RunLiveChoiceResult<"one", never>> = runLiveChoice(
+	commandContext,
+	{
+		title: "Command choice",
+		items: [{ id: "one", label: "One" }],
+		onSelectionChange: async ({ ctx }) => ctx.waitForIdle(),
+	},
+);
+void commandLiveChoice;
+
+void runLiveChoice(commandContext, {
+	title: "Invalid shortcut",
+	items: [{ id: "one", label: "One" }],
+	shortcuts: [
+		{
+			id: "invalid",
+			// @ts-expect-error Live-choice shortcuts accept Pi KeyId values, not uppercase aliases.
+			keys: ["E"],
+			label: "invalid",
+		},
+	],
+});
+
+void runLiveChoice(lifecycleContext, {
+	title: "Lifecycle choice",
+	items: [{ id: "one", label: "One" }],
+	onSelectionChange: async ({ ctx }) => {
+		ctx.isIdle();
+		// @ts-expect-error Lifecycle live choices must not gain command-only session methods.
+		await ctx.waitForIdle();
+	},
 });
 
 void runTask(lifecycleContext, {

@@ -33,6 +33,7 @@ import {
 	safeMenuText,
 } from "./rendering.js";
 import { createReviewComponent, type ReviewOptions } from "./review.js";
+import { SelectionController } from "./selection-controller.js";
 
 export { browseDialogLabel, browseDialogPages } from "./browse.js";
 export type {
@@ -190,33 +191,26 @@ function createChoiceComponent<ScreenId extends string, ActionId extends string>
 	});
 	const viewportSize = Math.min(items.length, options.screen.viewportSize ?? 10);
 	const list = new SelectList(items, viewportSize, selectTheme(options.theme));
-	const initialId = items.some((item) => item.value === options.selectedItemId)
-		? options.selectedItemId
-		: items[0]?.value;
-	let selectedItemId = initialId;
-	setInitialSelection(list, items, initialId);
-	const select = (index: number) => {
-		if (items.length === 0) return;
-		const selectedIndex = Math.max(0, Math.min(index, items.length - 1));
-		list.setSelectedIndex(selectedIndex);
-		selectedItemId = items[selectedIndex]?.value;
-		if (selectedItemId) options.onSelectionChange?.(selectedItemId);
+	const selection = new SelectionController(options.screen.items, options.selectedItemId);
+	setInitialSelection(list, items, selection.selectedItem?.id);
+	const syncSelection = () => {
+		const item = selection.selectedItem;
+		if (!item) return;
+		list.setSelectedIndex(selection.selectedIndex);
+		options.onSelectionChange?.(item.id);
 	};
 	const move = (delta: number) => {
-		if (items.length === 0) return;
-		const index = items.findIndex((item) => item.value === selectedItemId);
-		select((index + delta + items.length) % items.length);
+		if (selection.move(delta)) syncSelection();
 	};
-	const activate = (itemId: string | undefined) => {
-		if (!itemId) return;
-		const item = options.screen.items.find((candidate) => candidate.id === itemId);
-		if (!item?.disabled) options.onEvent({ kind: "activate", itemId });
+	const activate = () => {
+		const item = selection.selectedItem;
+		if (item && !item.disabled) options.onEvent({ kind: "activate", itemId: item.id });
 	};
 	let disposed = false;
 	return {
 		render(width) {
 			const safeWidth = Math.max(1, width);
-			const selected = options.screen.items.find((item) => item.id === selectedItemId);
+			const selected = selection.selectedItem;
 			const details = [
 				...(selected?.disabledReason
 					? [`Unavailable: ${safeMenuText(selected.disabledReason)}`]
@@ -251,7 +245,8 @@ function createChoiceComponent<ScreenId extends string, ActionId extends string>
 				...wrapTextWithAnsi(
 					options.theme.fg(
 						"dim",
-						menuHint(options.keybindings, options.screen.hint ?? "back", "select"),
+						options.interactionHint ??
+							menuHint(options.keybindings, options.screen.hint ?? "back", "select"),
 					),
 					safeWidth,
 				),
@@ -271,15 +266,15 @@ function createChoiceComponent<ScreenId extends string, ActionId extends string>
 			} else if (options.keybindings.matches(data, "tui.select.up")) move(-1);
 			else if (options.keybindings.matches(data, "tui.select.down")) move(1);
 			else if (options.keybindings.matches(data, "tui.select.pageUp")) {
-				const index = items.findIndex((item) => item.value === selectedItemId);
-				select(index - Math.max(1, viewportSize));
+				if (selection.page(-1, viewportSize)) syncSelection();
 			} else if (options.keybindings.matches(data, "tui.select.pageDown")) {
-				const index = items.findIndex((item) => item.value === selectedItemId);
-				select(index + Math.max(1, viewportSize));
-			} else if (matchesKey(data, Key.home)) select(0);
-			else if (matchesKey(data, Key.end)) select(items.length - 1);
-			else if (options.keybindings.matches(data, "tui.select.confirm") || data === " ") {
-				activate(selectedItemId);
+				if (selection.page(1, viewportSize)) syncSelection();
+			} else if (matchesKey(data, Key.home)) {
+				if (selection.first()) syncSelection();
+			} else if (matchesKey(data, Key.end)) {
+				if (selection.last()) syncSelection();
+			} else if (options.keybindings.matches(data, "tui.select.confirm") || data === " ") {
+				activate();
 			}
 			options.tui.requestRender();
 		},

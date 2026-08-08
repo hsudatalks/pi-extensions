@@ -68,6 +68,8 @@ export interface MenuScreenComponentOptions<ScreenId extends string, ActionId ex
 	onInputSubmit?(change: MenuInputSubmit): Promise<MenuChangeResponse<ScreenId>>;
 	onTransition?(transition: MenuTransition<ScreenId>): void;
 	onError?(error: unknown): void;
+	/** Internal standalone-interaction hint override. Declarative screens do not set this. */
+	interactionHint?: string;
 	onDispose?(): void;
 }
 

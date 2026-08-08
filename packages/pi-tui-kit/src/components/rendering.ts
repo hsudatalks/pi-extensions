@@ -1,6 +1,10 @@
 import { type Input, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { formatInteractionHints } from "../interaction-hints.js";
+import { replaceTerminalControls, safeMenuText } from "../text.js";
 import type { ActionMenuItem } from "../types.js";
-import type { MenuBinding, MenuKeybindings, MenuScreenComponentOptions } from "./contracts.js";
+import type { MenuKeybindings, MenuScreenComponentOptions } from "./contracts.js";
+
+export { safeMenuText } from "../text.js";
 
 export function actionMenuItemPresentation(item: ActionMenuItem<string, string>): {
 	label: string;
@@ -58,45 +62,20 @@ export function menuHint(
 	destination: "back" | "close",
 	confirmAction: string,
 ) {
-	const up = bindingText(keybindings, "tui.select.up");
-	const down = bindingText(keybindings, "tui.select.down");
-	const confirm = bindingText(keybindings, "tui.select.confirm");
-	const cancel = bindingText(keybindings, "tui.select.cancel", "ctrl+c");
-	return [
-		...(up || down ? [`${[up, down].filter(Boolean).join("/")} navigate`] : []),
-		...(confirm && confirmAction ? [`${confirm} ${confirmAction}`] : []),
-		...(cancel ? [`${cancel} ${destination}`] : []),
-		...(destination === "back" ? ["ctrl+c close"] : []),
-	].join(" • ");
-}
-
-function bindingText(keybindings: MenuKeybindings, binding: MenuBinding, excluded?: string) {
-	return keybindings
-		.getKeys(binding)
-		.filter((key) => key !== excluded)
-		.map((key) => {
-			if (key === "up") return "↑";
-			if (key === "down") return "↓";
-			if (key === "escape") return "esc";
-			return safeMenuText(key);
-		})
-		.filter(Boolean)
-		.join("/");
-}
-
-export function safeMenuText(value: unknown) {
-	return replaceTerminalControls(value).replace(/\s+/gu, " ").trim();
+	return formatInteractionHints(keybindings, [
+		{ bindings: ["tui.select.up", "tui.select.down"], label: "navigate" },
+		...(confirmAction ? [{ bindings: ["tui.select.confirm"] as const, label: confirmAction }] : []),
+		{
+			bindings: ["tui.select.cancel"],
+			excludeKeys: ["ctrl+c"],
+			label: destination,
+		},
+		...(destination === "back" ? [{ keys: ["ctrl+c"], label: "close" }] : []),
+	]);
 }
 
 export function handleSearchInput(input: Input, data: string) {
 	input.handleInput(data);
 	const value = replaceTerminalControls(input.getValue());
 	if (value !== input.getValue()) input.setValue(value);
-}
-
-export function replaceTerminalControls(value: unknown) {
-	return Array.from(String(value), (character) => {
-		const codePoint = character.codePointAt(0) ?? 0;
-		return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f) ? " " : character;
-	}).join("");
 }

@@ -8,8 +8,8 @@ Reusable navigation helpers and typed, declarative interaction flows for indepen
 [`@earendil-works/pi-tui`](https://www.npmjs.com/package/@earendil-works/pi-tui). The initial
 high-level API lets extensions describe menu screens and domain actions while this package owns
 standard rendering, navigation, mode adaptation, cancellation, and lifecycle behavior. It also
-provides a standalone task runner for abort-aware work with a cancellable bordered loader composed
-from public Pi TUI primitives.
+provides standalone task, confirmation, and live-choice interactions plus lifecycle ownership for
+specialized custom components.
 
 ## 📦 Install
 
@@ -190,8 +190,74 @@ replacement, external TUI disposal, and failures remain distinct `stale` or `err
 owns only this interaction lifecycle—the caller performs every confirmed side effect and must abort
 its owner signal on replacement or shutdown.
 
+For a choice whose cursor drives an extension-owned preview, use `runLiveChoice()` instead of making
+a declarative `choice` screen side-effecting:
+
+```ts
+import { runLiveChoice } from "@narumitw/pi-tui-kit";
+
+const previousPreview = capturePreview();
+let choice;
+try {
+  choice = await runLiveChoice(ctx, {
+    title: "Preset",
+    items: presets.map((preset) => ({
+      id: preset.id,
+      label: preset.label,
+      description: preset.description,
+      disabled: !preset.available,
+      disabledReason: preset.available ? undefined : "Required font is unavailable",
+    })),
+    currentItemId: activePresetId,
+    initialItemId: activePresetId,
+    navigationLabel: "live preview",
+    confirmLabel: "apply",
+    shortcuts: [{ id: "customize", keys: ["e", "shift+e"], label: "customize" }],
+    signal: currentSessionSignal(),
+    isCurrent: () => generation === currentGeneration(),
+    onSelectionChange: ({ item, signal }) => {
+      if (!signal.aborted) previewPreset(item.id);
+    },
+  });
+} finally {
+  restorePreview(previousPreview);
+}
+
+if (choice?.kind === "selected") await saveAndApplyPreset(choice.itemId);
+else if (choice?.kind === "shortcut") await customizePreset(choice.itemId);
+```
+
+TUI calls `onSelectionChange` for the initial cursor and later focused rows, including disabled rows;
+only confirmation and shortcuts are blocked for a disabled row. Shortcut keys use Pi `KeyId` values;
+keys that conflict with current standard choice controls are omitted from shortcut hints and dispatch.
+Synchronous previews run immediately.
+While an asynchronous preview is pending, newer cursor changes coalesce to the latest row. Completion,
+Back, Close, owner cancellation, external disposal, and errors abort the callback signal and drain
+owned preview work before returning. The callback must honor that signal. The caller still owns its
+preview snapshot, rollback, persistence, confirmation, and final apply policy.
+
+RPC deliberately degrades to a signal-aware ordinary selector: it never runs live previews or custom
+shortcuts, disabled rows remain inert, and cancellation follows the requested Back/Close hint. Print
+and JSON return `unsupported`. Results distinguish `selected`, `shortcut`, `closed`, `stale`,
+`unsupported`, and `error`.
+
+`formatInteractionHints()` is available for other specialized components. Pass the callback-injected
+keybindings plus binding-backed or literal-key hint groups; the formatter normalizes arrows,
+Enter/Escape names, sanitizes controls, applies exclusions, de-duplicates keys, and supports a custom
+separator.
+
+```ts
+import { formatInteractionHints } from "@narumitw/pi-tui-kit";
+
+const hint = formatInteractionHints(keybindings, [
+  { bindings: ["tui.select.up", "tui.select.down"], label: "preview" },
+  { bindings: ["tui.select.confirm"], label: "apply" },
+  { keys: ["e"], label: "customize" },
+]);
+```
+
 For a specialized custom component that does not belong in the declarative screen union, use
-`runCustomInteraction()`. It supplies an interaction-owned signal, classifies owner replacement and
+`runCustomInteraction()`.  It supplies an interaction-owned signal, classifies owner replacement and
 external component disposal as stale, disposes exactly once, and drains optional `waitForPending()`
 work before returning. The consumer still owns the component, its Back/Close value, and every domain
 side effect. Async factories and pending work must honor the supplied signal; the helper drains them
@@ -290,8 +356,9 @@ const profileScreen = {
 };
 ```
 
-Keep live previews, preview rollback, persistence, and confirmation policy in the consuming extension;
-a specialized UI remains appropriate when cursor movement itself has side effects.
+Keep preview snapshots, rollback, persistence, and confirmation policy in the consuming extension.
+Use standalone `runLiveChoice()` when its list-and-shortcut contract fits; keep a fully specialized UI
+local only when cursor behavior needs more than that contract.
 
 Browse screens are read-only and invoke no action. TUI fuzzy-searches each sanitized label, textual
 `statusText`, description, and optional non-rendered `searchText`. Enter opens an adaptive scrolling
@@ -484,7 +551,8 @@ cross-mode and lifecycle contract shared by multiple extensions.
 The library owns:
 
 - standalone task-mode adaptation, cancellation, stale checks, error routing, and draining;
-- lifecycle ownership, disposal, and pending-work draining around specialized custom interactions;
+- lifecycle ownership, disposal, and pending-work draining around live-choice and specialized custom
+  interactions;
 - width-safe standard rendering and injected keybindings;
 - screen-stack navigation, Back/Close semantics, and per-screen cursor memory;
 - serial settings and multi-select updates, optimistic rollback, and pending-update draining;
@@ -500,8 +568,8 @@ The consuming extension still owns:
 - transactional persistence and preservation of unknown settings fields;
 - confirmations and product-specific copy;
 - session generation and shutdown policy supplied through `isCurrent()`;
-- multi-line editors, secret inputs, live side-effecting previews, multi-field forms, or other
-  specialized custom TUI.
+- preview snapshots, rollback and persistence, multi-line editors, secret inputs, multi-field forms,
+  or other specialized custom TUI.
 
 Keep specialized UI local rather than adding package hooks that expose Pi TUI internals.
 
@@ -579,6 +647,10 @@ Consumer fixtures continue to own domain state, persistence, generation checks, 
 - `runTask()` — runs typed abort-aware work with a cancellable TUI loader and direct non-TUI fallback.
 - `runConfirmation()` — preserves Confirmed, Back, Close, Stale, Unsupported, and Error for one
   standalone confirmation without owning the confirmed side effect.
+- `runLiveChoice()` — adapts a live-preview choice to TUI and ordinary RPC selection while preserving
+  typed selection, shortcut, Back, Close, Stale, Unsupported, and Error outcomes.
+- `formatInteractionHints()` — formats sanitized, normalized, de-duplicated injected bindings and
+  literal shortcut keys for specialized interaction hints.
 - `runCustomInteraction()` — owns cancellation, stale checks, exactly-once disposal, optional pending
   work draining, and typed results around one extension-owned custom TUI component.
 - `resolveMenuScreen()` — resolves and validates a dynamic screen for tests or adapters.
@@ -586,10 +658,10 @@ Consumer fixtures continue to own domain state, persistence, generation checks, 
 - exported screen, item, action, transition, runtime option, `MenuCloseReason`, and result types.
 - `@narumitw/pi-tui-kit/testing` — separate subpath for `createTuiHarness()`, `createRpcHarness()`,
   strict scripts, and their public testing types; it is not re-exported from the production root.
-- `PI_EXTENSION_MENU_API_VERSION` — current declarative API version (`8`). Version 8 adds disabled
-  action reasons and adaptive action-label columns; version-7 definitions remain valid on the
-  version-8 runtime. Version 7 added `runConfirmation()`, and version 6 added the read-only `browse`
-  screen and `runCustomInteraction()`.
+- `PI_EXTENSION_MENU_API_VERSION` — current API version (`9`). Version 9 adds `runLiveChoice()` and
+  `formatInteractionHints()` while version-8 menu definitions remain valid. Version 8 added disabled
+  action reasons and adaptive action-label columns, version 7 added `runConfirmation()`, and version
+  6 added the read-only `browse` screen and `runCustomInteraction()`.
 
 ## 🗂️ Package layout
 
@@ -598,6 +670,8 @@ Consumer fixtures continue to own domain state, persistence, generation checks, 
 - `src/testing/` — supported TUI/RPC test drivers exported only through the `/testing` subpath
 - `src/task.ts` — standalone and menu-shared task lifecycle orchestration
 - `src/confirmation.ts` — standalone confirmation mode adaptation and lifecycle results
+- `src/live-choice.ts` — standalone live-choice TUI/RPC adaptation and preview-work ownership
+- `src/interaction-hints.ts` — injected-key and literal-shortcut hint formatting
 - `src/custom-interaction.ts` — lifecycle ownership for specialized public custom components
 - `dist/` — generated ESM and declarations included in the npm package
 - `test/` — contract, renderer, navigation, lifecycle, and public testing-entrypoint coverage

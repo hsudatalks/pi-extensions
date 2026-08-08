@@ -2,11 +2,14 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import {
 	type BrowseScreen,
 	defineMenu,
+	formatInteractionHints,
 	type InputScreen,
 	type MenuCloseReason,
 	type MultiSelectScreen,
 	type ReviewScreen,
+	type RunLiveChoiceResult,
 	runCustomInteraction,
+	runLiveChoice,
 	runMenu,
 } from "../src/index.js";
 import { createRpcHarness, createTuiHarness } from "../src/testing/index.js";
@@ -156,14 +159,45 @@ export function showSpecializedView(ctx: ExtensionCommandContext, generation: nu
 	return runCustomInteraction<{ kind: "back" | "close" }>(ctx, {
 		signal: currentSessionSignal(),
 		isCurrent: () => generation === currentGeneration(),
-		create: ({ keybindings, signal, complete }) => ({
-			render: () => [signal.aborted ? "Closing…" : "Specialized view"],
-			invalidate() {},
-			handleInput(data) {
-				if (keybindings.matches(data, "tui.select.cancel")) complete({ kind: "back" });
-			},
-		}),
+		create: ({ keybindings, signal, complete }) => {
+			const hint = formatInteractionHints(keybindings, [
+				{ bindings: ["tui.select.up", "tui.select.down"], label: "navigate" },
+				{ keys: ["e"], label: "edit" },
+			]);
+			return {
+				render: () => [signal.aborted ? "Closing…" : `Specialized view · ${hint}`],
+				invalidate() {},
+				handleInput(data: string) {
+					if (keybindings.matches(data, "tui.select.cancel")) complete({ kind: "back" });
+				},
+			};
+		},
 	});
+}
+
+export async function choosePreset(ctx: ExtensionCommandContext, generation: number) {
+	const previousPreview = "minimal";
+	let preview = previousPreview;
+	let result: RunLiveChoiceResult<"minimal" | "full", "customize"> | undefined;
+	try {
+		result = await runLiveChoice(ctx, {
+			title: "Preset",
+			items: [
+				{ id: "minimal", label: "Minimal" },
+				{ id: "full", label: "Full" },
+			],
+			currentItemId: "minimal",
+			shortcuts: [{ id: "customize", keys: ["e"], label: "customize" }],
+			signal: currentSessionSignal(),
+			isCurrent: () => generation === currentGeneration(),
+			onSelectionChange: ({ item, signal }) => {
+				if (!signal.aborted) preview = item.id;
+			},
+		});
+	} finally {
+		preview = previousPreview;
+	}
+	return { result, preview };
 }
 
 export async function driveMenuWithSupportedTuiHarness() {

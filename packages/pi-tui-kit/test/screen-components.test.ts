@@ -309,6 +309,41 @@ test("choice screens page through a bounded viewport and sanitize all displayed 
 	assert.ok(harness.component.render(24).every((line) => visibleWidth(line) <= 24));
 });
 
+test("choice selection wraps single steps, clamps jumps, and handles empty lists", () => {
+	const items = Array.from({ length: 6 }, (_, index) => ({
+		id: `choice-${index}`,
+		label: `Choice ${index}`,
+	}));
+	const screen: MenuScreen<ScreenId, ActionId> = {
+		kind: "choice",
+		title: "Selection movement",
+		items,
+		action: "choose",
+		viewportSize: 2,
+	};
+	const harness = componentHarness(screen, { selectedItemId: "choice-0" });
+	harness.component.handleInput("k");
+	harness.component.handleInput("l");
+	harness.component.handleInput("j");
+	harness.component.handleInput("u");
+	harness.component.handleInput("\u001b[F");
+	harness.component.handleInput("l");
+	harness.component.handleInput("\u001b[H");
+	harness.component.handleInput("l");
+	assert.deepEqual(harness.events, [
+		{ kind: "activate", itemId: "choice-5" },
+		{ kind: "activate", itemId: "choice-5" },
+		{ kind: "activate", itemId: "choice-0" },
+	]);
+
+	const empty = componentHarness({ ...screen, items: [] });
+	for (const input of ["k", "j", "u", "d", "\u001b[H", "\u001b[F", "l"]) {
+		empty.component.handleInput(input);
+	}
+	assert.deepEqual(empty.selectionChanges, []);
+	assert.deepEqual(empty.events, []);
+});
+
 test("theme invalidation rebuilds themed title content", () => {
 	let accent = "first";
 	const harness = componentHarness(actionScreen, {

@@ -9,6 +9,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
+import { formatInteractionHints } from "../interaction-hints.js";
 import type { MenuBrowseItem } from "../types.js";
 import type { BrowseOptions, MenuKeybindings, MenuScreenComponent } from "./contracts.js";
 import { handleSearchInput, safeMenuText } from "./rendering.js";
@@ -398,50 +399,38 @@ function boundedLines(lines: readonly string[], width: number, rows: number) {
 }
 
 function browseHint(keybindings: MenuKeybindings, destination: "back" | "close") {
-	const up = bindingText(keybindings, "tui.select.up");
-	const down = bindingText(keybindings, "tui.select.down");
-	const confirm = bindingText(keybindings, "tui.select.confirm");
-	const cancel = bindingText(keybindings, "tui.select.cancel", "ctrl+c");
-	return [
-		"type to search",
-		...(up || down ? [`${[up, down].filter(Boolean).join("/")} navigate`] : []),
-		...(confirm ? [`${confirm} details`] : []),
-		...(cancel ? [`${cancel} ${destination}`] : []),
-		...(destination === "back" ? ["ctrl+c close"] : []),
-	].join(" · ");
+	const controls = formatInteractionHints(
+		keybindings,
+		[
+			{ bindings: ["tui.select.up", "tui.select.down"], label: "navigate" },
+			{ bindings: ["tui.select.confirm"], label: "details" },
+			{
+				bindings: ["tui.select.cancel"],
+				excludeKeys: ["ctrl+c"],
+				label: destination,
+			},
+			...(destination === "back" ? [{ keys: ["ctrl+c"], label: "close" }] : []),
+		],
+		{ separator: "·" },
+	);
+	return ["type to search", controls].filter(Boolean).join(" · ");
 }
 
 function detailHint(keybindings: MenuKeybindings) {
-	const up = bindingText(keybindings, "tui.select.up");
-	const down = bindingText(keybindings, "tui.select.down");
-	const pageUp = bindingText(keybindings, "tui.select.pageUp");
-	const pageDown = bindingText(keybindings, "tui.select.pageDown");
-	const cancel = bindingText(keybindings, "tui.select.cancel", "ctrl+c");
-	return [
-		...(up || down ? [`${[up, down].filter(Boolean).join("/")} scroll`] : []),
-		...(pageUp || pageDown ? [`${[pageUp, pageDown].filter(Boolean).join("/")} page`] : []),
-		...(cancel ? [`${cancel} back`] : []),
-		"ctrl+c close",
-	].join(" · ");
-}
-
-function bindingText(
-	keybindings: MenuKeybindings,
-	binding: Parameters<MenuKeybindings["getKeys"]>[0],
-	excluded?: string,
-) {
-	return keybindings
-		.getKeys(binding)
-		.filter((key) => key !== excluded)
-		.map((key) => {
-			if (key === "up") return "↑";
-			if (key === "down") return "↓";
-			if (key === "escape") return "esc";
-			if (key === "enter" || key === "return") return "enter";
-			return safeMenuText(key);
-		})
-		.filter(Boolean)
-		.join("/");
+	return formatInteractionHints(
+		keybindings,
+		[
+			{ bindings: ["tui.select.up", "tui.select.down"], label: "scroll" },
+			{ bindings: ["tui.select.pageUp", "tui.select.pageDown"], label: "page" },
+			{
+				bindings: ["tui.select.cancel"],
+				excludeKeys: ["ctrl+c"],
+				label: "back",
+			},
+			{ keys: ["ctrl+c"], label: "close" },
+		],
+		{ separator: "·" },
+	);
 }
 
 function safeBrowseText(value: unknown) {
