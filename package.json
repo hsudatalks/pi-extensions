@@ -39,7 +39,7 @@
 		"test": "node ./scripts/run-tests.mjs",
 		"check": "node ./scripts/run-checks.mjs",
 		"precommit": "npm run biome:check && npm run typecheck",
-		"prepare": "husky",
+		"prepare": "node ./scripts/prepare.mjs",
 		"changeset": "changeset",
 		"changeset:status": "changeset status --verbose",
 		"version-packages": "changeset version && npm install --package-lock-only --ignore-scripts",
