@@ -1,12 +1,25 @@
 #!/usr/bin/env node
 
-import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const DEFAULT_FORK_REF = "main";
 const MANAGED_PACKAGE_ROOT = "univers/node_modules/@narumitw";
+const DELEGATION_START = "<!-- univers-pi-delegation:start -->";
+const DELEGATION_END = "<!-- univers-pi-delegation:end -->";
+const DELEGATION_GUIDANCE = `${DELEGATION_START}
+## Delegation policy
+
+You are the primary implementation agent. Own normal investigation, editing, testing, and delivery yourself. Delegate only when a specialist has a clear comparative advantage:
+
+- Use the explorer for unfamiliar or cross-cutting code, visual or image evidence, broad reconnaissance, or when key facts remain uncertain.
+- Use the advisor for consequential architecture, difficult root-cause analysis, security or reliability risk, or a real choice between competing designs.
+- Use the validator after user-visible, release-bound, cross-module, or otherwise high-risk changes when independent acceptance evidence is valuable.
+- Do not delegate short, obvious, well-localized work; do not ask a specialist to repeat evidence already established; do not delegate merely to consume subscription capacity.
+- Run at most one specialist at a time. Give it a bounded question and concrete acceptance criteria, then integrate its evidence yourself. Do not delegate recursively.
+${DELEGATION_END}`;
 
 const AGENTS = {
 	"advisor.md": `---
@@ -18,17 +31,6 @@ model: openai-codex/gpt-5.6-sol:high
 
 Act as a senior technical advisor. Analyze architecture, risks, evidence, and proposed changes.
 Do not modify files. Use bash only for read-only inspection. Return a decisive recommendation with exact evidence.
-`,
-	"executor.md": `---
-name: executor
-description: DeepSeek implementation worker for one bounded task at a time; never delegates further
-tools: read,bash,edit,write,grep,find,ls
-model: opencode-go/deepseek-v4-flash
----
-
-Execute exactly one bounded implementation task from the parent agent.
-Follow repository instructions, inspect before editing, make the smallest coherent change, and run focused verification.
-Do not spawn or delegate to other agents. Report files changed, verification results, and remaining risks.
 `,
 	"explorer.md": `---
 name: explorer
@@ -98,13 +100,18 @@ export function configureUniversProfile({
 	for (const [name, contents] of Object.entries(AGENTS)) {
 		atomicWrite(join(agentsDir, name), contents, 0o600);
 	}
+	rmSync(join(agentsDir, "executor.md"), { force: true });
+	atomicWrite(
+		join(agentDir, "APPEND_SYSTEM.md"),
+		mergeManagedSection(readText(join(agentDir, "APPEND_SYSTEM.md")), DELEGATION_GUIDANCE),
+		0o600,
+	);
 
 	atomicWriteJson(
 		join(agentDir, "pi-subagents.json"),
 		{
 			agents: {
 				advisor: { thinkingLevel: "high", timeoutMs: 1_800_000 },
-				executor: { timeoutMs: 1_800_000 },
 				explorer: { thinkingLevel: "medium", timeoutMs: 900_000 },
 				validator: { thinkingLevel: "high", timeoutMs: 900_000 },
 			},
@@ -113,12 +120,12 @@ export function configureUniversProfile({
 				enabled: true,
 				transport: "subprocess",
 				completionDelivery: "auto-resume",
-				maxAgents: 4,
+				maxAgents: 3,
 				maxActiveTurns: 1,
 				maxChildrenPerAgent: 1,
 				maxDepth: 0,
 				idleTtlMs: 300_000,
-				maxStoredAgents: 8,
+				maxStoredAgents: 6,
 				retentionDays: 3,
 			},
 			consult: { resources: "project-context" },
@@ -171,15 +178,21 @@ export function inspectUniversProfile({ agentDir, forkRef = DEFAULT_FORK_REF }) 
 			fileContentEquals(join(agentDir, "univers", "fork-ref"), `${forkRef}\n`),
 		openCodeAuth: validApiKeyCredential(auth["opencode-go"]),
 		codexAuth: validOAuthCredential(auth["openai-codex"]),
-		agents: Object.entries(AGENTS).every(([name, contents]) =>
-			fileContentEquals(join(agentDir, "agents", name), contents),
-		),
+		agents:
+			Object.entries(AGENTS).every(([name, contents]) =>
+				fileContentEquals(join(agentDir, "agents", name), contents),
+			) && !fileExists(join(agentDir, "agents", "executor.md")),
+		delegationPolicy: readText(join(agentDir, "APPEND_SYSTEM.md")).includes(DELEGATION_GUIDANCE),
 		subagents:
+			JSON.stringify(Object.keys(subagents.agents ?? {}).sort()) ===
+				JSON.stringify(["advisor", "explorer", "validator"]) &&
 			subagents.stateful?.enabled === true &&
 			subagents.stateful?.transport === "subprocess" &&
 			subagents.stateful?.completionDelivery === "auto-resume" &&
+			subagents.stateful?.maxAgents === 3 &&
 			subagents.stateful?.maxActiveTurns === 1 &&
-			subagents.stateful?.maxDepth === 0,
+			subagents.stateful?.maxDepth === 0 &&
+			subagents.stateful?.maxStoredAgents === 6,
 		goal:
 			goal.toolVisibility === "always" &&
 			goal.experimental?.goals === false &&
@@ -251,6 +264,24 @@ function readJsonObject(path, fallback) {
 		if (fallback !== undefined && error?.code === "ENOENT") return fallback;
 		throw error;
 	}
+}
+
+function readText(path) {
+	try {
+		return readFileSync(path, "utf8");
+	} catch (error) {
+		if (error?.code === "ENOENT") return "";
+		throw error;
+	}
+}
+
+function mergeManagedSection(existing, managed) {
+	const escapedStart = DELEGATION_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const escapedEnd = DELEGATION_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const withoutManaged = existing
+		.replace(new RegExp(`${escapedStart}[\\s\\S]*?${escapedEnd}\\s*`, "g"), "")
+		.trimEnd();
+	return `${withoutManaged ? `${withoutManaged}\n\n` : ""}${managed}\n`;
 }
 
 function validApiKeyCredential(value) {

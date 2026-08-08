@@ -43,11 +43,11 @@ command -v npm >/dev/null 2>&1 || { printf '%s\n' "npm is required" >&2; exit 1;
 command -v curl >/dev/null 2>&1 || { printf '%s\n' "curl is required" >&2; exit 1; }
 command -v sha256sum >/dev/null 2>&1 || { printf '%s\n' "sha256sum is required" >&2; exit 1; }
 [ -f "$HOME/.codex/auth.json" ] || { printf '%s\n' "Workbench Codex auth is missing" >&2; exit 1; }
-[ "$READ_OPENCODE_KEY" -eq 1 ] || usage
-
 OPENCODE_KEY=""
-IFS= read -r OPENCODE_KEY || [ -n "$OPENCODE_KEY" ]
-[ -n "$OPENCODE_KEY" ] || { printf '%s\n' "OpenCode Go key is empty" >&2; exit 1; }
+if [ "$READ_OPENCODE_KEY" -eq 1 ]; then
+	IFS= read -r OPENCODE_KEY || [ -n "$OPENCODE_KEY" ]
+	[ -n "$OPENCODE_KEY" ] || { printf '%s\n' "OpenCode Go key is empty" >&2; exit 1; }
+fi
 
 mkdir -p "$HOME/.local/bin"
 npm install --global --prefix "$HOME/.local" "@earendil-works/pi-coding-agent@$PI_VERSION"
@@ -68,9 +68,13 @@ npm install --prefix "$UNIVERS_ROOT" --legacy-peer-deps \
 	"$TEMP_DIR/pi-subagents.tgz"
 [ -f "$UNIVERS_ROOT/node_modules/@narumitw/pi-goal/src/index.ts" ]
 [ -f "$UNIVERS_ROOT/node_modules/@narumitw/pi-subagents/src/index.ts" ]
-printf '%s' "$OPENCODE_KEY" | node "$SCRIPT_DIR/univers-profile.mjs" \
-	--ref "$FORK_REF" \
-	--opencode-key-stdin
+if [ "$READ_OPENCODE_KEY" -eq 1 ]; then
+	printf '%s' "$OPENCODE_KEY" | node "$SCRIPT_DIR/univers-profile.mjs" \
+		--ref "$FORK_REF" \
+		--opencode-key-stdin
+else
+	node "$SCRIPT_DIR/univers-profile.mjs" --ref "$FORK_REF"
+fi
 OPENCODE_KEY=""
 
 node "$SCRIPT_DIR/univers-profile.mjs" --ref "$FORK_REF" --check

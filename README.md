@@ -150,8 +150,8 @@ pi update --extensions
 
 This fork includes an idempotent Workbench profile installer for the Univers deployment. It
 keeps DeepSeek V4 Flash as the root Pi model, imports the current Workbench's own ChatGPT Codex
-subscription into Pi, and installs bounded Luna explorer/validator, Sol advisor, and DeepSeek
-executor roles. Only the forked Goal and subagent extension entrypoints are enabled.
+subscription into Pi, and installs bounded Luna explorer/validator and Sol advisor roles. Only the
+forked Goal and subagent extension entrypoints are enabled.
 
 ```bash
 scripts/install-univers-profile.sh --ref <tested-commit> --opencode-key-stdin
@@ -163,6 +163,9 @@ The first command downloads the two commit-pinned release tarballs, reads the Op
 atomically. It does not clone or install the full extension monorepo. Pin deployments to a tested
 commit so every Workbench can be rolled back by changing one ref. The subagent profile allows one active child turn globally, prevents recursive delegation,
 and expires idle retained agents after five minutes.
+
+Omit `--opencode-key-stdin` during upgrades to preserve the Workbench's existing OpenCode Go
+credential. This allows accounts to be assigned per Workbench without adding runtime key rotation.
 
 ## 🧑‍💻 Local development
 

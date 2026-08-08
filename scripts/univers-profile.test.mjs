@@ -51,6 +51,7 @@ test("configures a complete filtered Univers profile without leaking credentials
 		openCodeAuth: true,
 		codexAuth: true,
 		agents: true,
+		delegationPolicy: true,
 		subagents: true,
 		goal: true,
 	});
@@ -69,6 +70,10 @@ test("configures a complete filtered Univers profile without leaking credentials
 		readFileSync(join(agentDir, "agents", "validator.md"), "utf8").includes("luna:high"),
 		true,
 	);
+	assert.equal(
+		readFileSync(join(agentDir, "APPEND_SYSTEM.md"), "utf8").includes("Use the advisor"),
+		true,
+	);
 	assert.equal(JSON.stringify(settings).includes("opencode-secret"), false);
 	writeFileSync(join(agentDir, "agents", "validator.md"), "stale");
 	assert.equal(inspectUniversProfile({ agentDir, forkRef: "abc123" }).agents, false);
@@ -78,6 +83,8 @@ test("preserves unrelated packages and credentials across idempotent upgrades", 
 	const { agentDir, codexAuthPath } = fixture();
 	configureUniversProfile({ agentDir, codexAuthPath, forkRef: "old", opencodeKey: "key" });
 	const settingsPath = join(agentDir, "settings.json");
+	writeFileSync(join(agentDir, "APPEND_SYSTEM.md"), "Keep this user instruction.\n");
+	writeFileSync(join(agentDir, "agents", "executor.md"), "stale executor\n");
 	const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
 	settings.packages.unshift("npm:other-extension");
 	writeFileSync(settingsPath, JSON.stringify(settings));
@@ -89,6 +96,18 @@ test("preserves unrelated packages and credentials across idempotent upgrades", 
 	assert.equal(upgraded.packages[1].source.endsWith("/@narumitw/pi-goal"), true);
 	assert.equal(upgraded.packages[2].source.endsWith("/@narumitw/pi-subagents"), true);
 	assert.equal(inspectUniversProfile({ agentDir, forkRef: "new" }).openCodeAuth, true);
+	assert.equal(
+		readFileSync(join(agentDir, "APPEND_SYSTEM.md"), "utf8").includes(
+			"Keep this user instruction.",
+		),
+		true,
+	);
+	assert.equal(
+		readFileSync(join(agentDir, "APPEND_SYSTEM.md"), "utf8").match(/univers-pi-delegation:start/g)
+			?.length,
+		1,
+	);
+	assert.throws(() => readFileSync(join(agentDir, "agents", "executor.md")), /ENOENT/);
 });
 
 test("rejects non-subscription Codex auth and missing OpenCode auth", () => {
