@@ -71,8 +71,14 @@ test("configures a complete filtered Univers profile without leaking credentials
 		readFileSync(join(agentDir, "agents", "validator.md"), "utf8").includes("luna:high"),
 		true,
 	);
+	const advisor = readFileSync(join(agentDir, "agents", "advisor.md"), "utf8");
+	assert.equal(advisor.includes("tools: read,grep,find,ls,bash,edit,write"), true);
+	assert.equal(advisor.includes("Do not modify files"), false);
+	assert.equal(advisor.includes("edit the files, run focused verification"), true);
 	assert.equal(
-		readFileSync(join(agentDir, "APPEND_SYSTEM.md"), "utf8").includes("Use the advisor"),
+		readFileSync(join(agentDir, "APPEND_SYSTEM.md"), "utf8").includes(
+			"use stateful delegation so it retains its full read, write, edit, and command tools",
+		),
 		true,
 	);
 	assert.equal(JSON.stringify(settings).includes("opencode-secret"), false);
