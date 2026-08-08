@@ -22,6 +22,66 @@ import {
 	settingsFilePath,
 	validateConfigDocument,
 } from "../src/config.js";
+import { reachableModuleRequirements } from "../src/modules/index.js";
+import { presetForDocument, STARSHIP_PRESETS } from "../src/presets/catalog.js";
+
+test("bundled presets are distinct, valid, and limited to local core modules", () => {
+	assert.deepEqual(
+		STARSHIP_PRESETS.map((preset) => preset.id),
+		[
+			"minimal",
+			"bracketed-segments",
+			"catppuccin-powerline",
+			"gruvbox-rainbow",
+			"jetpack",
+			"nerd-font-symbols",
+			"no-empty-icons",
+			"no-nerd-font",
+			"no-runtime-versions",
+			"pastel-powerline",
+			"plain-text-symbols",
+			"pure-preset",
+			"tokyo-night",
+		],
+	);
+	assert.equal(new Set(STARSHIP_PRESETS.map((preset) => preset.id)).size, STARSHIP_PRESETS.length);
+	assert.deepEqual(
+		STARSHIP_PRESETS.filter((preset) => preset.requiresNerdFont).map((preset) => preset.id),
+		[
+			"catppuccin-powerline",
+			"gruvbox-rainbow",
+			"nerd-font-symbols",
+			"pastel-powerline",
+			"tokyo-night",
+		],
+	);
+
+	const allowedModules = new Set([
+		"brand",
+		"model",
+		"thinking",
+		"directory",
+		"git_branch",
+		"git_state",
+		"git_status",
+		"activity",
+		"context",
+		"time",
+		"fill",
+	]);
+	for (const preset of STARSHIP_PRESETS) {
+		const loaded = validateConfigDocument(`/presets/${preset.id}.toml`, preset.rawDocument);
+		assert.deepEqual(loaded.diagnostics, [], preset.id);
+		assert.ok(preset.label.length > 0, preset.id);
+		assert.ok(preset.description.length > 0, preset.id);
+		for (const name of reachableModuleRequirements(loaded.config).keys()) {
+			assert.equal(allowedModules.has(name), true, `${preset.id}: ${name}`);
+		}
+		assert.equal(presetForDocument(preset.rawDocument)?.id, preset.id);
+		assert.equal(presetForDocument(`${preset.rawDocument}\n`), undefined);
+	}
+	assert.equal(presetForDocument(undefined), undefined);
+});
 
 test("config path uses the agent directory and missing settings use built-in defaults", () => {
 	const root = mkdtempSync(join(tmpdir(), "pi-starship-config-"));

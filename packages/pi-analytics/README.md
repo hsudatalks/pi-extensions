@@ -96,7 +96,7 @@ Pi exposes HTTP responses and final assistant failures, not every provider-SDK t
 
 The command accepts no arguments. TUI mode uses the full dashboard; RPC mode adapts the same standard screens to dialogs. Print and JSON modes reject the interactive command observably instead of writing ad hoc protocol output.
 
-The root menu contains Change time range, Skills, Tools, Provider reliability, Response cycles, Data & privacy, and Close. Skills and Tools are searchable browse views with details and model breakdowns. Escape goes Back from nested screens and closes the root. Ctrl+C closes the menu. Cancelling data deletion has no side effects.
+The root menu contains Change time range, Skills, Tools, Provider reliability, Response cycles, Data & privacy, and Close. Skills and Tools are searchable browse views with details and model breakdowns. Escape goes Back from nested screens and closes the root. Ctrl+C closes the menu. Data deletion uses Pi TUI Kit's standalone confirmation: Back keeps the dashboard open, Ctrl+C closes it in TUI mode, and cancellation never clears data.
 
 ## 🔐 Local data and privacy
 

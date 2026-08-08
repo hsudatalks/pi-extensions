@@ -1,0 +1,27 @@
+export const NERD_FONT_SYMBOLS_PRESET = `# Balanced Pi footer with Nerd Font symbols.
+format = "$brand$model$thinking$directory$git_branch$git_status$activity$context$time"
+
+[brand]
+symbol = ""
+
+[model]
+symbol = "󰚩"
+
+[thinking]
+symbol = "󰔟"
+
+[directory]
+symbol = "󰉋"
+
+[git_branch]
+symbol = ""
+
+[activity]
+symbol = "󰑮"
+
+[context]
+symbol = "󰍛"
+
+[time]
+symbol = ""
+`;

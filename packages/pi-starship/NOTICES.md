@@ -1,7 +1,9 @@
 # Notices
 
-pi-starship's format and style behavior is based in part on Starship. It uses the `yaml`
-package to parse kubeconfig and OpenStack metadata as inert local data.
+pi-starship's format, style behavior, and bundled preset color and layout treatments are based in
+part on the preset documents emitted by Starship 1.26.0. The preset modules and TOML are adapted to
+Pi's native runtime snapshots. pi-starship uses the `yaml` package to parse kubeconfig and OpenStack
+metadata as inert local data.
 
 ## yaml
 

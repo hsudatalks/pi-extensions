@@ -108,65 +108,54 @@ settings content.
 
 ## Plan
 
-- [ ] Add failing settings cases under `packages/pi-chrome-devtools/test/` for browser-only user
+- [x] Add failing settings cases under `packages/pi-chrome-devtools/test/` for browser-only user
       documents, omitted defaults, absolute user paths, trusted project relative paths, untrusted
       project suppression, project-array replacement, invalid browser shapes and manifests, global
       tool-save preservation, malformed-file protection, unknown fields, and pending-save/read
-      ordering; verify the focused compiled tests fail because the current loader only accepts the
-      tool-selection schema and has no project precedence.
-- [ ] Refactor `packages/pi-chrome-devtools/src/settings.ts` to normalize independent tool and browser
+      ordering. Evidence: the initial focused compile failed on the absent browser/project contract;
+      the final focused suite passes.
+- [x] Refactor `packages/pi-chrome-devtools/src/settings.ts` to normalize independent tool and browser
       sections, load canonical user plus trusted project settings without creating missing files,
-      resolve paths by scope, preserve both recognized and unknown siblings during atomic global
-      saves, and expose effective values with source metadata; verify the new focused settings suite
-      and all existing legacy/canonical settings tests pass.
-- [ ] Add failing managed-launch cases for extension-configured attach bypass, local auto-launch
-      requirements, supported/unsupported executable classification, deterministic ordered launch
-      arguments, multiple extension paths, occupied explicit ports, partial startup failure,
-      cancellation, repeated shutdown, and unchanged no-extension attach-first behavior; use
-      test-owned temporary manifests and fake process/endpoint operations rather than real user
-      profiles, and confirm each red state fails for the intended missing contract.
-- [ ] Update `packages/pi-chrome-devtools/src/runtime.ts` and
-      `packages/pi-chrome-devtools/src/browser-manager.ts` to apply the session's validated browser
-      configuration, force an owned isolated launch when extensions are requested, pass safe argv
-      entries without a shell, reject unsupported launch modes before spawn, and clean up every
-      partial or cancelled launch; verify the managed-launch tests pass without weakening existing
-      endpoint retry and shutdown behavior.
-- [ ] Extend `packages/pi-chrome-devtools/src/chrome-devtools.ts` and the existing selector/status
-      helpers so `session_start` loads settings with `ctx.cwd` and `ctx.isProjectTrusted()`,
-      post-await continuations revalidate session generation, shutdown waits for settings and browser
-      cleanup, and quick-start/status output reports canonical/project paths, effective browser
-      source, configured unpacked extensions, restart semantics, and actionable Chrome for Testing
-      guidance; verify command tests cover TUI, RPC notification, replacement, and shutdown paths.
-- [ ] Update `packages/pi-chrome-devtools/README.md` with both JSON locations, schema, precedence,
-      relative-path rules, trusted-project and arbitrary-extension-code warnings, supported browser
-      requirements, `/reload` behavior, failure diagnostics, and a current-project example; add a
-      minor Changeset for `@narumitw/pi-chrome-devtools` and verify every documented branch is covered
-      by a deterministic test or the explicit runtime smoke.
-- [ ] Run a bounded runtime smoke with `just try chrome-devtools`, a temporary Manifest V3 fixture,
-      and an explicitly selected Chrome for Testing/Chromium binary: confirm the managed browser
-      exposes the fixture service-worker target, normal page navigation/evaluation/screenshot tools
-      still work, `/reload` closes the old managed browser, and an external CDP browser remains
-      untouched; record the executable product/version and any platform not exercised.
-- [ ] Audit the final diff against the settings, lifecycle, process ownership, cancellation,
-      non-TUI, documentation, and package MUST rules; run the focused compiled tests,
-      `npm run check --workspace @narumitw/pi-chrome-devtools`, root `npm test`, root
-      `npm run check`, `just pack chrome-devtools`, `npm run changeset:status`, and
-      `git diff --check`, leaving any unavailable smoke or accepted deviation open before handoff.
+      resolve paths by scope, preserve recognized and unknown siblings during atomic global saves,
+      and expose effective values with source metadata. Evidence: `settings.test.ts` plus all legacy
+      settings cases pass.
+- [x] Add failing managed-launch cases for extension attach bypass, launch requirements, executable
+      classification, ordered argv, multiple paths, occupied ports, partial failure, cancellation,
+      repeated shutdown, and unchanged attach-first behavior. Evidence: the initial focused compile
+      failed on the absent launch contract; `managed-browser.test.ts` now passes with test-owned fakes.
+- [x] Update `runtime.ts` and `browser-manager.ts` to force an owned isolated launch, use shell-free
+      argv, reject unsupported modes/products before spawn, and clean every partial or cancelled
+      launch. Evidence: focused launch/lifecycle tests and the real-browser smoke pass.
+- [x] Extend session lifecycle and status handling to use `ctx.cwd`, `ctx.isProjectTrusted()`,
+      generation checks, ordered shutdown, source-aware status, restart semantics, and Chrome for
+      Testing guidance. Evidence: TUI/RPC, replacement, shutdown, and display-sanitization tests pass.
+- [x] Update the package README and add a minor Changeset for
+      `@narumitw/pi-chrome-devtools`. Evidence: `.changeset/bright-chrome-extensions.md` resolves to a
+      `0.50.0` minor bump and the package dry run contains the documented README and source files.
+- [x] Run a bounded real-browser smoke with a temporary Manifest V3 fixture and explicit Chrome for
+      Testing binary. Evidence: the non-interactive compiled-source equivalent was used instead of
+      the TUI-opening `just try` command; Chrome for Testing `149.0.7827.55` on `linux/x64` exposed the
+      fixture `background.js` service-worker target, navigation/evaluation/screenshot passed,
+      replacement removed the old process/profile, and a separately running external CDP browser
+      remained reachable. Windows and macOS were not exercised.
+- [x] Audit the final diff and run all required checks. Evidence: focused compiled tests (46), package
+      check, root `npm test` (2,514 tests), root `npm run check` (Biome, boundaries, typechecks, and
+      2,514 tests), package dry run (14 files), Changeset status, and `git diff --check` all pass.
 
 ## Completion Checklist
 
-- [ ] `pi-chrome-devtools.json` can configure a Chrome for Testing/Chromium executable and unpacked
-      extension paths without any new environment variable.
-- [ ] Missing settings preserve current behavior; canonical user and trusted project precedence,
-      path resolution, invalid-file protection, unknown-field preservation, atomic saves, and reload
-      semantics match the README.
-- [ ] Extension-configured sessions use only an extension-owned isolated browser and never silently
+- [x] `pi-chrome-devtools.json` configures Chrome for Testing/Chromium and unpacked extension paths
+      without a new environment variable.
+- [x] Missing settings preserve current behavior; user/project precedence, path resolution,
+      invalid-file protection, unknown-field preservation, atomic saves, and reload semantics match
+      the README.
+- [x] Extension-configured sessions use only an extension-owned isolated browser and never silently
       attach to, mutate, restart, or close an external browser.
-- [ ] Supported browsers load every configured test extension with safe startup argv; unsupported
-      branded browsers and invalid paths fail before a misleading successful result.
-- [ ] Cancellation, partial startup, session replacement, `/reload`, and shutdown release every owned
-      process, retry, status entry, and temporary profile exactly once.
-- [ ] Existing list/select/navigate/evaluate/screenshot behavior and no-extension attach-first startup
+- [x] Supported browsers load configured test extensions with safe startup argv; branded browsers and
+      invalid paths fail before a misleading success.
+- [x] Cancellation, partial startup, replacement, `/reload`, and shutdown release owned processes,
+      retries, status entries, and temporary profiles idempotently.
+- [x] Existing list/select/navigate/evaluate/screenshot behavior and no-extension attach-first startup
       remain backward compatible.
-- [ ] Focused tests, package and root checks, Changeset status, package dry run, Chrome for Testing
-      runtime smoke, final semantic audit, and plan evidence all pass before the plan is archived.
+- [x] Focused tests, package/root checks, Changeset status, package dry run, Chrome for Testing smoke,
+      final semantic audit, and plan evidence pass before archival.

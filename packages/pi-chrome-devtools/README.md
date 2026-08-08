@@ -20,12 +20,15 @@ This package is inspired by [`chrome-devtools-mcp`](https://github.com/ChromeDev
 - Reuses an existing Chrome DevTools Protocol endpoint when one is already available.
 - Lazily auto-launches a Chromium-family browser for missing local endpoints, with Chrome,
   Chromium, Brave, and Edge fallbacks.
+- Loads one or more user-approved unpacked extensions into an isolated managed Chrome for Testing
+  or Chromium browser.
 - Uses a dynamic managed DevTools port by default to avoid port conflicts, while preserving
   explicit endpoint overrides.
 - Retries briefly while Chrome is starting and reports actionable endpoint errors.
 - Shows statusline activity only while Chrome DevTools tools are running.
-- Provides a `/chrome-devtools` menu with quick-start help and tool controls.
-- Uses `@narumitw/pi-tui-kit` for width-safe menus and individual tool selection.
+- Provides a state-first `/chrome-devtools` menu for tool access, browser status, setup, and help.
+- Stages menu-based tool changes for exact review before one confirmed apply.
+- Uses `@narumitw/pi-tui-kit` for width-safe TUI menus and equivalent RPC dialogs.
 - Persists the selected Chrome DevTools tools across Pi restarts.
 
 ## 📦 Install
@@ -48,51 +51,95 @@ pi -e ./packages/pi-chrome-devtools
 
 ## 🚀 Browser startup
 
-The extension first tries the configured endpoint, defaulting to `127.0.0.1:9222`. If that
-local endpoint is unavailable, it lazily launches an extension-owned Chromium-family browser with
-an isolated temp profile and then retries the CDP request. Existing endpoints are reused and are
-not terminated by the extension.
+Without unpacked extensions, the extension first tries the configured endpoint, defaulting to
+`127.0.0.1:9222`. If that local endpoint is unavailable, it lazily launches an extension-owned
+Chromium-family browser with an isolated temp profile and retries the CDP request. Existing endpoints
+are reused and are never terminated by the extension.
 
 When `PI_CHROME_DEVTOOLS_PORT` is not set, auto-launch uses Chrome's dynamic DevTools port mode
-(`--remote-debugging-port=0`) and reads `DevToolsActivePort` from the temp profile. This avoids
-forcing every Pi session onto port `9222`. If you set `PI_CHROME_DEVTOOLS_PORT` to a valid port
-(`1`-`65535`), the extension uses that explicit port for both attach and auto-launch. Empty or
-invalid port values are ignored and fall back to the default attach-first behavior.
+(`--remote-debugging-port=0`) and reads `DevToolsActivePort` from the temp profile. If you set a valid
+`PI_CHROME_DEVTOOLS_PORT` (`1`-`65535`), the extension uses that explicit port. Empty or invalid values
+fall back to the default attach-first behavior.
 
-When `PI_CHROME_DEVTOOLS_BROWSER` is set, that executable is the only auto-launch candidate; a
-missing or unusable forced browser reports an error instead of falling back. Without that override,
-browser discovery checks platform-specific Chrome, Chromium, Brave, and Microsoft Edge candidates.
-Disable auto-launch to keep the older manual flow:
+### Unpacked extensions
+
+> [!WARNING]
+> An unpacked extension executes privileged browser code. Load only code you trust. Project settings
+> are honored only when Pi reports the project as trusted.
+
+Configure the canonical user file at
+`${PI_CODING_AGENT_DIR:-~/.pi/agent}/pi-chrome-devtools.json`:
+
+```json
+{
+  "browser": {
+    "executablePath": "/absolute/path/to/chrome-for-testing",
+    "extensionPaths": [
+      "/absolute/path/to/unpacked-extension-one",
+      "/absolute/path/to/unpacked-extension-two"
+    ]
+  }
+}
+```
+
+Every user-file path must be absolute. Each extension path must resolve to a directory containing a
+valid `manifest.json` and cannot contain a comma because Chrome uses commas to separate multiple
+startup paths. For extension-configured sessions, `executablePath` must identify Chrome for
+Testing or Chromium. Branded Google Chrome is rejected because tested releases can silently ignore
+unpacked-extension startup flags.
+
+A trusted project can replace the user extension list in
+`<workspace>/.pi/pi-chrome-devtools.json`. Relative paths resolve from the workspace (`ctx.cwd`):
+
+```json
+{
+  "browser": {
+    "extensionPaths": ["./extension"]
+  }
+}
+```
+
+Project `extensionPaths` replace, rather than append to, the user array. A project file cannot
+override `browser.executablePath`; browser selection remains machine-owned user configuration.
+Effective precedence is defaults, user settings, trusted project override, then existing explicit
+runtime environment overrides. No new environment variable is required.
+
+When `extensionPaths` is non-empty, the extension skips attach-first behavior and starts an isolated,
+extension-owned managed browser with `--disable-extensions-except` and `--load-extension`. It fails
+before spawning when the endpoint is remote, auto-launch is disabled, an explicit port is occupied,
+the executable is missing, or the browser product is unsupported. It never adds extensions to,
+modifies, restarts, or closes an external browser.
+
+Settings are loaded on session start. After editing JSON, use `/reload` or replace the session; the
+old managed browser is closed before the new configuration is applied. Missing files preserve the
+existing no-extension behavior. Invalid JSON, invalid browser values, and missing manifests are left
+unchanged and ignored with an actionable warning.
+
+### Environment overrides and manual endpoints
+
+`PI_CHROME_DEVTOOLS_BROWSER` remains the explicit runtime executable override. Without unpacked
+extensions, browser discovery still checks platform-specific Chrome, Chromium, Brave, and Microsoft
+Edge candidates. Disable auto-launch to keep the manual flow:
 
 ```bash
 PI_CHROME_DEVTOOLS_AUTO_LAUNCH=0 pi -e ./packages/pi-chrome-devtools
 ```
 
-Force a browser executable or endpoint if needed:
+Force an executable or endpoint if needed:
 
 ```bash
-PI_CHROME_DEVTOOLS_BROWSER=/usr/bin/brave-browser pi -e ./packages/pi-chrome-devtools
+PI_CHROME_DEVTOOLS_BROWSER=/usr/bin/chromium pi -e ./packages/pi-chrome-devtools
 PI_CHROME_DEVTOOLS_HOST=127.0.0.1 PI_CHROME_DEVTOOLS_PORT=9223 pi -e ./packages/pi-chrome-devtools
 ```
 
-Manual launch still works and is required for remote endpoints, opt-out mode, or unsupported WSL
-browser/profile path setups:
+Manual launch remains available when no unpacked extensions are configured:
 
 ```bash
 google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/pi-chrome-devtools
 ```
 
-On macOS:
-
-```bash
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
-  --remote-debugging-port=9222 \
-  --user-data-dir=/tmp/pi-chrome-devtools
-```
-
-On session shutdown, the extension terminates only browser processes it started itself and
-best-effort removes their temp profiles. It never closes user-started browsers or remote
-endpoints.
+On session shutdown, the extension terminates only browser processes it started and best-effort
+removes their temporary profiles. It never closes user-started browsers or remote endpoints.
 
 ## 🛠️ Pi tools
 
@@ -135,8 +182,26 @@ to read the saved path, for example `read({ path: "artifacts/homepage.png" })`.
 /chrome-devtools
 ```
 
-Opens a menu with quick-start help, command usage, tool status, controls for enabling or
-disabling all Chrome DevTools tools, and a selector for choosing individual tools.
+Opens a menu that shows the current browser-tool count, whether that selection is saved, the
+configured endpoint, the observed managed-browser state, and any settings or launch warning before
+you choose an action. The five actions stay on one level:
+
+- **Choose browser tools…** — stage any combination of the five capabilities, then review the exact
+  enabled/disabled result before selecting **Apply tool changes**.
+- **Enable all browser tools…** or **Disable all browser tools…** — preview the context-appropriate
+  bulk change before applying it.
+- **Browser status** — inspect runtime, endpoint, launch mode, and the last launch attempt without
+  probing the endpoint or starting Chrome.
+- **Settings & setup** — inspect effective files, sources, trust, reload steps, and recovery guidance.
+- **Help** — view command usage and return to the menu.
+
+In the tool screen, **Select all** and **Select none** are unambiguous shortcuts; individual rows use
+friendly task labels while retaining their raw `chrome_devtools_*` identity in the description.
+Toggles remain a command-local draft. **Review changes** previews the exact effect, **Apply tool
+changes** saves it, and Cancel, Escape, Ctrl+C, disposal, or session replacement discards an
+unconfirmed draft without changing runtime tools or settings. A failed apply restores the previous
+active-tool state, preserves the settings file, retains the draft for retry, and reports how to
+recover.
 
 Direct subcommands are also available:
 
@@ -150,16 +215,26 @@ Direct subcommands are also available:
 /chrome-devtools disable
 ```
 
+Compatibility aliases remain available: `toggle` and `select` mean `tools`, `on` means `enable`, and
+`off` means `disable`.
+
 - `help` shows command usage.
 - `quickstart` shows the configured CDP endpoint, endpoint source, auto-launch mode, browser
   candidates, last launch attempt, and launch hints.
 - `status` shows runtime tool state, persisted selection, settings file path, endpoint source,
   launch mode, last launch attempt, and active non-Chrome tool count.
-- `tools` opens a width-safe selector for choosing individual `chrome_devtools_*` tools.
-- `toggle` is an alias for `tools`.
-- `enable` enables all `chrome_devtools_*` tools for future turns.
-- `disable` disables all `chrome_devtools_*` tools for future turns. The slash command remains
-  available.
+- `tools` opens the same staged, width-safe selection and review flow used by the menu.
+- `toggle` and `select` are compatibility aliases for `tools`.
+- `enable` immediately enables and saves all `chrome_devtools_*` tools for future turns; `on` is a
+  compatibility alias.
+- `disable` immediately disables and saves all `chrome_devtools_*` tools for future turns; `off` is a
+  compatibility alias. The slash command remains available.
+
+The menu, `tools`, `help`, `quickstart`, and `status` require TUI or RPC mode so their result is
+observable. TUI uses keyboard navigation and injected Pi keybindings; RPC receives equivalent
+standard dialogs. In print and JSON modes, interactive and informational routes reject explicitly
+instead of silently opening unavailable UI. The immediate `enable`/`disable` routes remain available
+for deterministic non-interactive use.
 
 The selected tool names are saved to:
 
@@ -169,8 +244,10 @@ ${PI_CODING_AGENT_DIR:-~/.pi/agent}/pi-chrome-devtools.json
 
 When the file is missing or invalid, the extension preserves Pi's current active-tool policy
 instead of enabling tools by itself. A valid saved selection is restored on Pi startup and
-`/reload`. A missing file is created by the first successful selection change. Within one Pi process, selection saves run in invocation order, reread the latest valid document, and preserve unknown fields. Malformed JSON
-or invalid recognized fields block the save without replacement; a failed save restores the prior
+`/reload`. A missing file is created by the first confirmed menu apply or successful direct
+selection change. Within one Pi process, selection saves run in invocation order, reread the latest
+valid document, and preserve unknown fields. Malformed JSON or invalid recognized fields make menu
+mutation unavailable and block direct saves without replacement; a failed save restores the prior
 Chrome DevTools tool selection while preserving other extensions' current tools.
 
 Compatibility: older versions used `pi-chrome-devtools-settings.json`. A legacy-only file remains

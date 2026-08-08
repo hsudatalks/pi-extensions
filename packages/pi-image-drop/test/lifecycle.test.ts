@@ -2,13 +2,17 @@
 // verify ordering across menu, browser processing, message attachment, replacement, and shutdown.
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { RunConfirmationOptions, RunConfirmationResult } from "@narumitw/pi-tui-kit";
 import { createTuiHarness } from "@narumitw/pi-tui-kit/testing";
 import { createMockContext, createMockPi } from "../../../test/support.js";
 import { digestImages, type ProcessedImage } from "../src/batch.js";
-import type { ConfirmDialogResult, ImageDropLimitsMenuState } from "../src/menu.js";
+import type { ImageDropLimitsMenuState } from "../src/menu.js";
 import { ImageDropRuntime } from "../src/runtime.js";
 import type { ImageDropServerOptions } from "../src/server.js";
 import { DEFAULT_SETTINGS, type ImageDropSettings } from "../src/settings.js";
+
+type ConfirmDialogResult = "confirmed" | "cancelled" | "close";
 
 const PNG = Buffer.from("processed-png");
 const PROCESSED: ProcessedImage = {
@@ -58,12 +62,14 @@ function createHarness(
 		>;
 		confirm?: () => Promise<boolean>;
 		custom?: ReturnType<typeof createTuiHarness>["custom"];
+		usePublishedConfirmation?: boolean;
 		input?: (render?: string) => Promise<string | undefined>;
 		confirmDialog?: () => Promise<ConfirmDialogResult>;
 		inputDialog?: () => Promise<
 			{ kind: "submitted"; value: string } | { kind: "cancelled" } | { kind: "closed" }
 		>;
 		onConfirm?: (title: string, message: string) => void;
+		onConfirmationOptions?: (options: RunConfirmationOptions<ExtensionContext>) => void;
 		onStatus?: (lines: readonly string[]) => void;
 		onLimits?: (state: ImageDropLimitsMenuState) => void;
 		onSave?: (settings: Partial<ImageDropSettings>) => Promise<void>;
@@ -130,11 +136,25 @@ function createHarness(
 				return { kind: "error", error };
 			}
 		},
-		showConfirm: async (_ctx, title, message) => {
-			options.onConfirm?.(title, message);
-			if (options.confirmDialog) return options.confirmDialog();
-			return ((await options.confirm?.()) ?? true) ? "confirmed" : "cancelled";
-		},
+		...(options.usePublishedConfirmation
+			? {}
+			: {
+					showConfirm: async (
+						_ctx: ExtensionContext,
+						confirmationOptions: RunConfirmationOptions<ExtensionContext>,
+					): Promise<RunConfirmationResult> => {
+						options.onConfirm?.(confirmationOptions.title, confirmationOptions.message);
+						options.onConfirmationOptions?.(confirmationOptions);
+						const result = options.confirmDialog
+							? await options.confirmDialog()
+							: ((await options.confirm?.()) ?? true)
+								? "confirmed"
+								: "cancelled";
+						return result === "confirmed"
+							? { kind: "confirmed" }
+							: { kind: "closed", reason: result === "close" ? "close" : "back" };
+					},
+				}),
 		updateSettings: options.onSave ?? (async () => undefined),
 		settingsFilePath: () => "/agent/pi-image-drop.json",
 	});
@@ -759,6 +779,65 @@ test("session replacement during a limit save suppresses stale state and UI publ
 		harness.context.notifications.some((notice) => /resource limits saved/iu.test(notice.message)),
 		false,
 	);
+});
+
+test("link rotation passes current session ownership into confirmation", async () => {
+	let received: RunConfirmationOptions<ExtensionContext> | undefined;
+	const harness = createHarness({
+		menuActions: ["open", "open", "close"],
+		confirmDialog: async () => "cancelled",
+		onConfirmationOptions: (options) => {
+			received = options;
+		},
+	});
+	await emit(harness.mock, "session_start", {}, harness.context.ctx);
+	await harness.mock.commands.get("image-drop")?.handler("", harness.context.ctx);
+	await harness.mock.commands.get("image-drop")?.handler("", harness.context.ctx);
+
+	assert.equal(received?.title, "Create a new staging link?");
+	assert.equal(received?.message, "The previous unused Image Drop link will stop working.");
+	assert.equal(received?.signal?.aborted, false);
+	assert.equal(received?.isCurrent?.(), true);
+
+	await emit(harness.mock, "session_shutdown", {}, harness.context.ctx);
+	assert.equal(received?.signal?.aborted, true);
+	assert.equal(received?.isCurrent?.(), false);
+});
+
+test("published confirmation preserves Back and Close during link rotation", async () => {
+	async function drive(exit: "tui.select.cancel" | "ctrl+c") {
+		const tui = createTuiHarness({ width: 80, rows: 24 });
+		const harness = createHarness({ custom: tui.custom, usePublishedConfirmation: true });
+		await emit(harness.mock, "session_start", {}, harness.context.ctx);
+
+		const first = Promise.resolve(
+			harness.mock.commands.get("image-drop")?.handler("", harness.context.ctx),
+		);
+		await tui.waitForOpen();
+		tui.press("tui.select.confirm");
+		await first;
+
+		const second = Promise.resolve(
+			harness.mock.commands.get("image-drop")?.handler("", harness.context.ctx),
+		);
+		await tui.waitForOpen();
+		tui.press("tui.select.confirm");
+		await tui.waitForPending();
+		await tui.waitForOpen();
+		tui.press(exit);
+		if (exit === "tui.select.cancel") {
+			await tui.waitForPending();
+			await tui.waitForOpen();
+			tui.press("ctrl+c");
+		}
+		await second;
+		return harness;
+	}
+
+	const back = await drive("tui.select.cancel");
+	assert.equal(back.context.notifications.length, 1);
+	const close = await drive("ctrl+c");
+	assert.equal(close.context.notifications.length, 1);
 });
 
 test("Ctrl+C closes Image Drop from limit dialogs and link rotation", async () => {

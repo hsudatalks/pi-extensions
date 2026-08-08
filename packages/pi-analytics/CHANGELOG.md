@@ -1,5 +1,11 @@
 # @narumitw/pi-analytics
 
+## 0.49.6
+
+### Patch Changes
+
+- 3344477: Use Pi TUI Kit's published standalone confirmation for analytics deletion so Back remains side-effect free, TUI Ctrl+C closes the dashboard, and stale or failed confirmation cannot clear data.
+
 ## 0.49.5
 
 ### Patch Changes

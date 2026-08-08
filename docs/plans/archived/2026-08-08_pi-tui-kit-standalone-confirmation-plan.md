@@ -87,27 +87,41 @@ Analytics without moving either extension's domain side effects into Pi TUI Kit.
       gate passed 2,448/2,448 tests; the five-run benchmark kept `codingAgentLoaded: false` in import,
       actions, review, and task scenarios (121.04 ms median cold import), and a built RPC confirmation
       smoke returned `confirmed` through API version 7.
-- [ ] Obtain explicit user approval to publish the new Kit version, then execute and verify the
-      repository's approved release workflow or publication path. Do not infer this approval from the
-      implementation approval.
-- [ ] After the release is visible on npm, migrate Image Drop in a separate bounded change, raise only
+- [x] Obtain explicit user approval to publish the new Kit version, then execute and verify the
+      repository's approved release workflow or publication path. Evidence: npm registry `latest`
+      resolves to `0.51.0`, the packed registry artifact exports menu API 8 and `runConfirmation()`,
+      and GitHub release `@narumitw/pi-tui-kit@0.51.0` was published on 2026-08-07.
+- [x] After the release is visible on npm, migrate Image Drop in a separate bounded change, raise only
       its reviewed Kit floor, preserve link-rotation Confirm/Back/Close/stale behavior, add its own
       changeset, and verify focused tests, pack contents, Pi runtime smoke, and `npm run check`.
-- [ ] After the release is visible on npm, migrate Analytics in a separate bounded change, raise only
+      Evidence: Image Drop now requires Kit `^0.51.0`, deleted its local confirmation component, and
+      passes current session ownership to `runConfirmation()` while retaining link mutation locally;
+      45 focused menu/lifecycle tests, the package check, 25-file dry-run package, isolated Pi load,
+      Changesets status, and the 2,492-test repository gate passed.
+- [x] After the release is visible on npm, migrate Analytics in a separate bounded change, raise only
       its reviewed Kit floor, preserve side-effect-free Back and committed-clear behavior while making
       TUI Ctrl+C close the dashboard, add its own changeset, and verify TUI/RPC/stale/error tests, pack
-      contents, Pi runtime smoke, and `npm run check`.
-- [ ] Re-run the two-consumer behavior matrix, mark the roadmap milestone complete with publication
+      contents, Pi runtime smoke, and `npm run check`. Evidence: Analytics now requires Kit `^0.51.0`
+      and dynamically injects `runConfirmation()` into its dashboard; 14 focused menu tests cover
+      TUI/RPC, Back, Close, stale ownership, error, committed-clear cancellation, and replacement,
+      while the package check, 14-file dry-run package, isolated Pi load, and Changesets status passed.
+- [x] Re-run the two-consumer behavior matrix, mark the roadmap milestone complete with publication
       and migration evidence, run the final repository gate, and archive this fully checked plan.
+      Evidence: 59 combined Image Drop/Analytics focused tests and all 2,495 repository tests passed;
+      the roadmap records both migrations and the completed standalone-confirmation milestone.
 
 ## Completion Checklist
 
-- [ ] The published root API exposes one documented standalone confirmation contract with no private
-      Pi imports or consumer domain payloads.
+- [x] The published root API exposes one documented standalone confirmation contract with no private
+      Pi imports or consumer domain payloads. Evidence: the `0.51.0` registry artifact exports
+      `runConfirmation()` and its built confirmation module through menu API 8.
 - [x] Maintained tests prove Confirmed, Back, Close, Stale, Unsupported, and Error, including TUI/RPC
       limitations, pre-abort, owner abort, external disposal, and stale-error suppression.
-- [ ] Image Drop and Analytics consume the published API through independently reviewable migrations
-      without capability, persistence, cancellation, or non-TUI regressions.
-- [ ] Package dry runs, runtime smokes, the benchmark, and `npm run check` pass for the final state.
-- [ ] The roadmap records stable release/adoption evidence and this plan is archived only after every
+- [x] Image Drop and Analytics consume the published API through independently reviewable migrations
+      without capability, persistence, cancellation, or non-TUI regressions. Evidence: each package
+      raises only its own Kit floor and has a separate patch Changeset and focused proof coverage.
+- [x] Package dry runs, runtime smokes, the benchmark, and `npm run check` pass for the final state.
+      Evidence: source-complete Kit benchmark evidence remains recorded above; both consumer package
+      checks, dry runs, isolated Pi loads, the 59-test matrix, and the 2,495-test root gate passed.
+- [x] The roadmap records stable release/adoption evidence and this plan is archived only after every
       item above is complete.

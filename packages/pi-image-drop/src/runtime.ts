@@ -7,16 +7,15 @@ import type {
 	InputEvent,
 	InputEventResult,
 } from "@earendil-works/pi-coding-agent";
-import type { MenuActionResult } from "@narumitw/pi-tui-kit";
+import type {
+	MenuActionResult,
+	RunConfirmationOptions,
+	RunConfirmationResult,
+} from "@narumitw/pi-tui-kit";
 import { BatchError, BatchStore, digestImages, type ProcessedImage } from "./batch.js";
 import { formatBytes } from "./format.js";
 import type { ImageProcessor } from "./images.js";
-import type {
-	ConfirmDialogResult,
-	ImageDropLimitsMenuState,
-	LimitSettingAction,
-	MenuLoadResult,
-} from "./menu.js";
+import type { ImageDropLimitsMenuState, LimitSettingAction, MenuLoadResult } from "./menu.js";
 import { readEffectivePiImageSettings } from "./pi-settings.js";
 import type { ImageDropServer, ImageDropServerOptions } from "./server.js";
 import {
@@ -65,7 +64,10 @@ export interface RuntimeDependencies {
 		label: string,
 		task: (signal: AbortSignal) => Promise<T>,
 	): Promise<MenuLoadResult<T>>;
-	showConfirm(ctx: ExtensionContext, title: string, message: string): Promise<ConfirmDialogResult>;
+	showConfirm(
+		ctx: ExtensionContext,
+		options: RunConfirmationOptions<ExtensionContext>,
+	): Promise<RunConfirmationResult>;
 	updateSettings: typeof updateSettings;
 	settingsFilePath: typeof settingsFilePath;
 }
@@ -78,8 +80,8 @@ const DEFAULT_DEPENDENCIES: RuntimeDependencies = {
 	loadInteractiveUi: loadDefaultInteractiveUi,
 	loadStatus: async (ctx, label, task) =>
 		(await loadDefaultInteractiveUi()).runImageDropMenuLoad(ctx, label, task),
-	showConfirm: async (ctx, title, message) =>
-		(await loadDefaultInteractiveUi()).showImageDropConfirmDialog(ctx, title, message),
+	showConfirm: async (ctx, options) =>
+		(await loadDefaultInteractiveUi()).runConfirmation(ctx, options),
 	updateSettings,
 	settingsFilePath,
 };
@@ -817,16 +819,27 @@ export class ImageDropRuntime {
 			throw new Error("the Pi session changed while opening Image Drop");
 		}
 		if (confirmRotation && server.hasUnusedLink?.()) {
-			const confirmation = await this.dependencies.showConfirm(
-				ctx,
-				"Create a new staging link?",
-				"The previous unused Image Drop link will stop working.",
-			);
-			if (generation !== this.generation || this.closed) {
+			const confirmation = await this.dependencies.showConfirm(ctx, {
+				title: "Create a new staging link?",
+				message: "The previous unused Image Drop link will stop working.",
+				signal: this.sessionAbort.signal,
+				isCurrent: () => this.isCurrentMenu(generation),
+				// Preserve Image Drop's domain-level startup error instead of notifying twice.
+				onError: () => undefined,
+			});
+			if (!this.isCurrentMenu(generation)) {
 				throw new Error("the Pi session changed while opening Image Drop");
 			}
-			if (confirmation === "close") return "closed";
-			if (confirmation !== "confirmed") return "cancelled";
+			if (confirmation.kind === "closed") {
+				return confirmation.reason === "close" ? "closed" : "cancelled";
+			}
+			if (confirmation.kind === "stale") {
+				throw new Error("the Pi session changed while opening Image Drop");
+			}
+			if (confirmation.kind === "unsupported") {
+				throw new Error(`Image Drop confirmation is unavailable in ${confirmation.mode} mode`);
+			}
+			if (confirmation.kind === "error") throw confirmation.error;
 		}
 		const link = server.issueLink();
 		if (this.batch?.publicState().phase === "empty") {

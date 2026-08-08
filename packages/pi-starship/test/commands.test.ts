@@ -61,6 +61,7 @@ test("/starship keeps direct routes and opens a stateful narrow TUI menu", async
 	assert.match(screen, /Saved built-in configuration/u);
 	assert.match(screen, /Healthy/u);
 	assert.match(screen, /Customize footer/u);
+	assert.match(screen, /Presets/u);
 	assert.match(screen, /Configuration/u);
 	assert.match(screen, /Help/u);
 	assert.match(screen, /Restore built-in…/u);
@@ -98,6 +99,7 @@ test("Explain consumes the current snapshot without starting collection work", a
 
 		const running = mock.commands.get("starship")?.handler("", context.ctx);
 		await tui.waitForOpen();
+		tui.press("tui.select.down");
 		tui.press("tui.select.down");
 		tui.press("tui.select.confirm");
 		await tui.waitForOpen();
@@ -623,7 +625,8 @@ test("main and Configuration menus expose current state and a clear Back path", 
 		mode: "tui",
 		hasUI: true,
 		custom: async (factory: unknown) => {
-			const inputs = call === 0 ? ["\u001b[B", "\u001b[B", "\u001b[B", "\r"] : ["\u001b"];
+			const inputs =
+				call === 0 ? ["\u001b[B", "\u001b[B", "\u001b[B", "\u001b[B", "\r"] : ["\u001b"];
 			const driven = driveCustomSelector(factory, inputs, 26);
 			screens[call++] = driven.renders.flat().join("\n");
 			assert.ok(driven.renders.flat().every((line) => visibleWidth(line) <= 26));
@@ -663,7 +666,9 @@ test("Restore previews, confirms, and atomically applies the built-in footer", a
 			hasUI: true,
 			custom: async (factory: unknown) => {
 				const inputs =
-					call === 0 ? ["\u001b[B", "\u001b[B", "\u001b[B", "\u001b[B", "\u001b[B", "\r"] : ["\r"];
+					call === 0
+						? ["\u001b[B", "\u001b[B", "\u001b[B", "\u001b[B", "\u001b[B", "\u001b[B", "\r"]
+						: ["\r"];
 				const driven = driveCustomSelector(factory, inputs, 32);
 				if (call === 1) restorePreview = driven.renders.flat().join("\n");
 				call += 1;
@@ -718,7 +723,7 @@ test("Restore recovers a malformed settings document", async () => {
 			custom: async (factory: unknown) => {
 				const inputs =
 					call++ === 0
-						? ["\u001b[B", "\u001b[B", "\u001b[B", "\u001b[B", "\u001b[B", "\r"]
+						? ["\u001b[B", "\u001b[B", "\u001b[B", "\u001b[B", "\u001b[B", "\u001b[B", "\r"]
 						: ["\r"];
 				return driveCustomSelector(factory, inputs, 60).result;
 			},
@@ -835,7 +840,7 @@ test("restore preview cancellation preserves exact settings and runtime in a nar
 		});
 		const running = mock.commands.get("starship")?.handler("", context.ctx);
 		await tui.waitForOpen();
-		for (let index = 0; index < 5; index += 1) tui.press("tui.select.down");
+		for (let index = 0; index < 6; index += 1) tui.press("tui.select.down");
 		tui.press("tui.select.confirm");
 		await tui.waitForOpen();
 		const preview = tui.render();

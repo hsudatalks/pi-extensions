@@ -1,4 +1,4 @@
-export { defineMenu, runMenu } from "@narumitw/pi-tui-kit";
+export { defineMenu, runConfirmation, runMenu } from "@narumitw/pi-tui-kit";
 export {
 	createLimitInputScreen,
 	createLimitReviewScreen,
@@ -9,7 +9,6 @@ export {
 	limitSettingsPatch,
 	menuSummary,
 	runImageDropMenuLoad,
-	showImageDropConfirmDialog,
 	usesSafeLimits,
 	validateLimitInput,
 } from "./menu.js";

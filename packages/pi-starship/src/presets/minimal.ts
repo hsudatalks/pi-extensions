@@ -1,0 +1,23 @@
+export const MINIMAL_PRESET = `# A compact, font-safe Pi footer.
+format = "$model$directory$git_branch$activity"
+
+[model]
+format = "[$model]($style) "
+symbol = ""
+style = "bold blue"
+
+[directory]
+format = "[$path]($style) "
+symbol = ""
+style = "cyan bold"
+
+[git_branch]
+format = "[git:$branch]($style) "
+symbol = ""
+style = "bold purple"
+
+[activity]
+format = "[$text]($style)"
+symbol = "*"
+style = "bold yellow"
+`;

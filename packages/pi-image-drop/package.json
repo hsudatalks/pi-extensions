@@ -1,6 +1,6 @@
 {
 	"name": "@narumitw/pi-image-drop",
-	"version": "0.49.3",
+	"version": "0.49.4",
 	"description": "Pi extension for staging browser images and attaching them to the next message.",
 	"type": "module",
 	"license": "MIT",
@@ -34,7 +34,7 @@
 		"typecheck": "npm run check:web && tsc --noEmit"
 	},
 	"dependencies": {
-		"@narumitw/pi-tui-kit": "^0.49.1",
+		"@narumitw/pi-tui-kit": "^0.51.0",
 		"@radix-ui/colors": "3.0.0",
 		"@radix-ui/react-icons": "1.3.2",
 		"@radix-ui/themes": "3.3.0",

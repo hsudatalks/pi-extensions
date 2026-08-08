@@ -1,15 +1,5 @@
-import {
-	BorderedLoader,
-	type ExtensionCommandContext,
-	type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
-import {
-	Key,
-	matchesKey,
-	SelectList,
-	truncateToWidth,
-	wrapTextWithAnsi,
-} from "@earendil-works/pi-tui";
+import { BorderedLoader, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { Key, matchesKey } from "@earendil-works/pi-tui";
 import type { PublicBatchState, PublicHistoryState } from "./batch.js";
 import { formatBytes } from "./format.js";
 import { DEFAULT_SETTINGS, HARD_LIMITS, type ImageDropSettings } from "./settings.js";
@@ -272,62 +262,6 @@ export function runImageDropMenuLoad<T>(
 			dispose() {
 				taskAbort.abort();
 				loader.dispose();
-			},
-		};
-	});
-}
-
-export type ConfirmDialogResult = "confirmed" | "cancelled" | "close";
-
-/** Specialized three-way confirmation retained to distinguish Escape from Ctrl+C. */
-export function showImageDropConfirmDialog(
-	ctx: ExtensionContext,
-	title: string,
-	message: string,
-): Promise<ConfirmDialogResult> {
-	return showConfirmScreen(ctx, title, message.split(/\r?\n/));
-}
-
-function showConfirmScreen(
-	ctx: ExtensionContext,
-	title: string,
-	lines: readonly string[],
-): Promise<ConfirmDialogResult> {
-	return ctx.ui.custom<ConfirmDialogResult>((tui, theme, keybindings, done) => {
-		const list = new SelectList(
-			[
-				{ value: "confirmed", label: "Confirm" },
-				{ value: "cancelled", label: "Cancel" },
-			],
-			2,
-			{
-				selectedPrefix: (text) => theme.fg("accent", text),
-				selectedText: (text) => theme.fg("accent", text),
-				description: (text) => theme.fg("muted", text),
-				scrollInfo: (text) => theme.fg("dim", text),
-				noMatch: (text) => theme.fg("warning", text),
-			},
-		);
-		list.onSelect = (item) => done(item.value as "confirmed" | "cancelled");
-		list.onCancel = () => done("cancelled");
-		return {
-			render(width: number): string[] {
-				const safeWidth = Math.max(1, width);
-				return [
-					...wrapTextWithAnsi(theme.fg("accent", theme.bold(safeMenuText(title))), safeWidth),
-					...lines.flatMap((line) =>
-						wrapTextWithAnsi(theme.fg("muted", safeMenuText(line)), safeWidth),
-					),
-					"",
-					...list.render(safeWidth),
-				].map((line) => truncateToWidth(line, safeWidth));
-			},
-			invalidate: () => list.invalidate(),
-			handleInput(data: string) {
-				if (matchesKey(data, Key.ctrl("c"))) done("close");
-				else if (keybindings.matches(data, "tui.select.cancel")) done("cancelled");
-				else list.handleInput(data);
-				tui.requestRender();
 			},
 		};
 	});

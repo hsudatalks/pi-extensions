@@ -61,8 +61,9 @@ service state, then offers:
 Use the configured navigation and confirmation keys. Escape returns from a standard subview or closes
 the main menu; Ctrl+C closes from any menu level. Status, settings, limits, and help share one
 lifecycle-owned navigation flow. Resource-limit entry and save review use standard declarative
-screens with rejected-draft retention and exact bounded content; cancellable loaders and link-rotation
-three-way confirmation remain specialized. `/image-drop` accepts no arguments. The interactive menu is unavailable
+screens with rejected-draft retention and exact bounded content. Cancellable loaders remain
+extension-owned; link rotation uses Pi TUI Kit's standalone Confirm/Back/Close contract while Image
+Drop retains ownership of link invalidation. `/image-drop` accepts no arguments. The interactive menu is unavailable
 in RPC, JSON, and print modes and rejects those invocations before starting the service; manual
 settings remain available through the JSON file below.
 
@@ -165,8 +166,8 @@ Then open the unchanged `http://127.0.0.1:45678/...` link locally. Image Drop do
 src/index.ts            Pi package entrypoint
 src/image-drop.ts       extension registration and command orchestration
 src/runtime.ts          Pi lifecycle, lazy capabilities, and message orchestration
-src/interactive-ui.ts   lazily loaded menu adapter and Pi TUI Kit boundary
-src/menu.ts             limit input/review projections, menu-state helpers, loader, and confirmation
+src/interactive-ui.ts   lazy menu and standalone-confirmation Pi TUI Kit boundary
+src/menu.ts             limit input/review projections, menu-state helpers, and loader
 src/format.ts           lightweight byte formatting shared by runtime and menus
 src/batch.ts            in-memory draft and sent-history state machine
 src/images.ts           bounded queue with codecs loaded on first image processing

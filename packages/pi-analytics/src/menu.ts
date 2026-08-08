@@ -28,6 +28,11 @@ export interface AnalyticsMenuState {
 	result: AnalyticsLoadResult;
 }
 
+export interface AnalyticsMenuOptions {
+	runConfirmation: typeof import("@narumitw/pi-tui-kit")["runConfirmation"];
+	isCurrent(): boolean;
+}
+
 type Screen = "main" | "range" | "skills" | "tools" | "reliability" | "responses" | "privacy";
 type Action = "setRange" | "clearData";
 
@@ -38,7 +43,11 @@ const RANGE_LABELS: Record<TimeRangeId, string> = {
 	all: "All time",
 };
 
-export function createAnalyticsMenu(source: AnalyticsMenuDataSource, now: () => number = Date.now) {
+export function createAnalyticsMenu(
+	source: AnalyticsMenuDataSource,
+	now: () => number = Date.now,
+	options?: AnalyticsMenuOptions,
+) {
 	let rangeId: TimeRangeId = "7d";
 	let cachedState: AnalyticsMenuState | undefined;
 	const loadState = async (signal: AbortSignal): Promise<AnalyticsMenuState> => {
@@ -119,27 +128,45 @@ export function createAnalyticsMenu(source: AnalyticsMenuDataSource, now: () => 
 			},
 			clearData: async ({ ctx, state, signal }) => {
 				if (state.result.kind !== "ready") return { kind: "stay" };
+				if (!options) throw new Error("Analytics confirmation is unavailable");
 				const count = state.result.snapshot.overview.responseCycles;
-				const confirmed = await ctx.ui.confirm(
-					"Delete analytics data?",
-					`This will clear all local analytics history from:\n\n${safeDisplayText(state.path)}\n\nThe selected range currently shows ${count} response cycles. Other running Pi processes may add new records afterward.`,
-					{ signal },
-				);
-				if (!confirmed || signal.aborted) return { kind: "stay" };
+				const confirmation = await options.runConfirmation(ctx, {
+					title: "Delete analytics data?",
+					message: `This will clear all local analytics history from:\n\n${safeDisplayText(state.path)}\n\nThe selected range currently shows ${count} response cycles. Other running Pi processes may add new records afterward.`,
+					confirmLabel: "Delete data",
+					cancelLabel: "Keep data",
+					signal,
+					isCurrent: options.isCurrent,
+					// Keep the dashboard's existing domain-level error route as the only notifier.
+					onError: () => undefined,
+				});
+				if (signal.aborted || !options.isCurrent()) return { kind: "close" };
+				if (confirmation.kind === "closed") {
+					return confirmation.reason === "close" ? { kind: "close" } : { kind: "stay" };
+				}
+				if (confirmation.kind === "stale") return { kind: "close" };
+				if (confirmation.kind === "unsupported") {
+					throw new Error(`Analytics confirmation is unavailable in ${confirmation.mode} mode`);
+				}
+				if (confirmation.kind === "error") throw confirmation.error;
+
 				const result = await source.clearAll(signal);
 				cachedState = undefined;
-				try {
-					ctx.ui.notify("Cleared local analytics data.", "info");
-					if (result.cleanupIncomplete) {
-						ctx.ui.notify(
-							"Some obsolete analytics files are still in use. Stop other Pi processes and clear again to remove them.",
-							"warning",
-						);
+				const isCurrent = options.isCurrent();
+				if (isCurrent) {
+					try {
+						ctx.ui.notify("Cleared local analytics data.", "info");
+						if (result.cleanupIncomplete) {
+							ctx.ui.notify(
+								"Some obsolete analytics files are still in use. Stop other Pi processes and clear again to remove them.",
+								"warning",
+							);
+						}
+					} catch {
+						// The host can dispose the current UI after the ownership check.
 					}
-				} catch {
-					// Session replacement can invalidate the UI after the generation switch.
 				}
-				return signal.aborted ? { kind: "close" } : { kind: "to", screen: "main" };
+				return signal.aborted || !isCurrent ? { kind: "close" } : { kind: "to", screen: "main" };
 			},
 		},
 	};
@@ -158,9 +185,12 @@ export async function showAnalyticsMenu(
 	source: AnalyticsMenuDataSource,
 	options: { signal: AbortSignal; isCurrent: () => boolean },
 ): Promise<void> {
-	const { runMenu, runTask } = await import("@narumitw/pi-tui-kit");
+	const { runConfirmation, runMenu, runTask } = await import("@narumitw/pi-tui-kit");
 	if (options.signal.aborted || !options.isCurrent()) return;
-	const controller = createAnalyticsMenu(source);
+	const controller = createAnalyticsMenu(source, Date.now, {
+		runConfirmation,
+		isCurrent: options.isCurrent,
+	});
 	const loading = await runTask(ctx, {
 		label: "Loading local analytics…",
 		signal: options.signal,

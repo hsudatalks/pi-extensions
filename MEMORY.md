@@ -17,6 +17,7 @@
 - npm 12 returns `npm pack --workspaces --dry-run --json` as an object keyed by workspace name rather than the single-package array shape; normalize with `Object.values()` before auditing all tarballs.
 - `npm audit fix --force` can replace every workspace's exact Pi devDependency with a vulnerable older caret range; restore all workspace manifests and the lockfile, then use targeted patched upgrades or overrides instead.
 - A consumer cannot safely adopt an unpublished `pi-tui-kit` API in the same PR: clean `npm ci` resolves its semver dependency from the registry. Publish the Kit API before raising the consumer's reviewed compatibility floor; do not use local paths that break independent packaging.
+- After raising one consumer's Kit floor, npm 12 can update the lock while leaving the old nested package on disk; run a root `npm install` and verify the resolved consumer package version before typechecking.
 - Pi maintains separate managed npm roots for user and project packages; dependency deduplication is guaranteed only within one install root, not across scopes.
 - A `pi-tui-kit` runtime import of the `pi-coding-agent` root can evaluate a second repository-resolved agent runtime and add over a second. Keep Kit production JavaScript on public `pi-tui` primitives with coding-agent type-only, and lazy-load command menus until consumers require that published Kit boundary.
 - Official Pi can misresolve static `@earendil-works/pi-ai/api/*` imports beneath its compatibility alias. Prefer root exports; otherwise use a variable-specifier dynamic import.
@@ -47,6 +48,7 @@
 - `Editor.getText()` retains large pastes as markers; use `getExpandedText()` when moving a draft outside that editor.
 - Tests constructing `BorderedLoader` must initialize a theme and dispose the loader harness so its animation timer cannot keep Node alive.
 - Kit settings and multi-select actions settle asynchronously. UI harnesses must drain pending callbacks and observe an accepted transition; use the async-capable harness with `runCustomInteraction()`.
+- Assertions thrown inside mocked `ctx.ui.custom()` callbacks can be caught as menu runtime errors; capture render evidence and assert after the command completes.
 - Searchable TUI wrappers should reserve only a standalone Space key for activation; stripping spaces from an entire input chunk corrupts pasted multi-token queries.
 
 ### Integrations and package-specific traps

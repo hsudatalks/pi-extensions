@@ -6,7 +6,7 @@ import createTestnet from "hyperdht/testnet.js";
 import { ChatSession } from "../src/chat-session.js";
 import { createIdentity } from "../src/identity.js";
 import { directNeighborLimit, HyperswarmTransport, MAX_DIRECT_NEIGHBORS } from "../src/network.js";
-import { createPrivateRoom, createPublicRoom } from "../src/protocol.js";
+import { createPrivateRoom, createPublicRoom, MAX_GOSSIP_HOPS } from "../src/protocol.js";
 
 test("room overlays clamp every requested direct-neighbor limit to eight", () => {
 	assert.equal(MAX_DIRECT_NEIGHBORS, 8);
@@ -97,14 +97,51 @@ test("ten-peer sparse overlay relays once through a non-origin intermediate", {
 	});
 	try {
 		await Promise.all(sessions.map(({ session }) => session.start()));
+		const sender = sessions[0];
+		assert.ok(sender);
+		const senderKey = sender.identity.publicKey.toString("hex");
+		const sessionsByKey = new Map(
+			sessions.map((entry) => [entry.identity.publicKey.toString("hex"), entry]),
+		);
+		const findAuthenticatedRelayTarget = () => {
+			if (
+				!sessions.every(
+					({ session, transport }) =>
+						session.snapshot().directNeighbors === transport.connectedPeerKeys.length,
+				)
+			) {
+				return undefined;
+			}
+			const distances = new Map([[senderKey, 0]]);
+			const pending = [senderKey];
+			for (const key of pending) {
+				const distance = distances.get(key);
+				const current = sessionsByKey.get(key);
+				if (distance === undefined || distance >= MAX_GOSSIP_HOPS || !current) continue;
+				for (const neighbor of current.transport.connectedPeerKeys) {
+					if (!sessionsByKey.has(neighbor) || distances.has(neighbor)) continue;
+					distances.set(neighbor, distance + 1);
+					pending.push(neighbor);
+				}
+			}
+			if (distances.size !== sessions.length) return undefined;
+			return sessions.slice(1).find(({ identity }) => {
+				const distance = distances.get(identity.publicKey.toString("hex"));
+				return distance !== undefined && distance >= 2;
+			});
+		};
+		const relayPath = { target: undefined as ReturnType<typeof findAuthenticatedRelayTarget> };
 		await waitFor(
-			() => sessions.every(({ session }) => session.snapshot().participants.length === 9),
+			() => {
+				relayPath.target = findAuthenticatedRelayTarget();
+				return relayPath.target !== undefined;
+			},
 			() =>
 				sessions
-					.map(
-						({ session, transport }) =>
-							`${session.snapshot().participants.length}/${transport.connectionCount}`,
-					)
+					.map(({ session, transport }) => {
+						const snapshot = session.snapshot();
+						return `${snapshot.participants.length}/${snapshot.directNeighbors}/${transport.connectionCount}`;
+					})
 					.join(","),
 			20_000,
 		);
@@ -112,33 +149,25 @@ test("ten-peer sparse overlay relays once through a non-origin intermediate", {
 			sessions.every(({ transport }) => transport.connectionCount <= 8),
 			true,
 		);
-		const sender = sessions[0];
-		assert.ok(sender);
-		const indirect = sessions
-			.slice(1)
-			.find(
-				({ identity }) =>
-					!sender.transport.connectedPeerKeys.includes(identity.publicKey.toString("hex")),
-			);
-		assert.ok(indirect, "the sender must have at least one non-neighbor in a ten-peer room");
+		const indirect = relayPath.target;
+		assert.ok(indirect, "the sender must have an authenticated target across a two-hop path");
 		sender.session.send("through sparse overlay");
-		await waitFor(
-			() =>
-				indirect.session
-					.snapshot()
-					.transcript.filter(({ text }) => text === "through sparse overlay").length === 1,
-			() =>
-				`${sender.transport.connectionCount}:${indirect.transport.connectionCount}:${indirect.session.snapshot().transcript.length}`,
-			8_000,
-		);
-		await new Promise((resolve) => setTimeout(resolve, 100));
-		assert.equal(
-			sessions.every(
+		const deliveryCounts = () =>
+			sessions.map(
 				({ session }) =>
 					session.snapshot().transcript.filter(({ text }) => text === "through sparse overlay")
-						.length === 1,
-			),
-			true,
+						.length,
+			);
+		await waitFor(
+			() => deliveryCounts().every((count) => count === 1),
+			() => deliveryCounts().join(","),
+			8_000,
+		);
+		// Keep the fully ready overlay alive for slower alternate-path copies to arrive.
+		await new Promise((resolve) => setTimeout(resolve, 500));
+		assert.deepEqual(
+			deliveryCounts(),
+			Array.from({ length: sessions.length }, () => 1),
 		);
 	} finally {
 		await Promise.allSettled(sessions.map(({ session }) => session.leave()));

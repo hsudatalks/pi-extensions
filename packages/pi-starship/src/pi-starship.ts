@@ -85,6 +85,7 @@ interface PiStarshipOptions {
 
 export default function piStarship(pi: ExtensionAPI, options: PiStarshipOptions = {}) {
 	let loaded: LoadedStarshipConfig | undefined;
+	let previewLoaded: LoadedStarshipConfig | undefined;
 	const runtime: RuntimeState = {
 		activeTools: new Map(),
 		isStreaming: false,
@@ -252,6 +253,7 @@ export default function piStarship(pi: ExtensionAPI, options: PiStarshipOptions 
 	const installFooter = (ctx: ExtensionContext) => {
 		const generation = ++sessionGeneration;
 		sessionOwner = ctx.sessionManager;
+		previewLoaded = undefined;
 		menuController.abort(new DOMException("Starship session context replaced", "AbortError"));
 		menuController = new AbortController();
 		const target: RefreshTarget = { cwd: ctx.cwd, generation, sessionManager: ctx.sessionManager };
@@ -328,10 +330,11 @@ export default function piStarship(pi: ExtensionAPI, options: PiStarshipOptions 
 				invalidate() {},
 				render(width: number): string[] {
 					runtime.footerWidth = width;
-					if (!loaded) return [];
+					const current = previewLoaded ?? loaded;
+					if (!current) return [];
 					const snapshot = runtimeSnapshot(ctx, footerData, runtime);
 					return wrapFormattedStatusline(
-						renderStatusline(loaded.config, snapshot, width).ansi,
+						renderStatusline(current.config, snapshot, width).ansi,
 						width,
 					);
 				},
@@ -360,6 +363,7 @@ export default function piStarship(pi: ExtensionAPI, options: PiStarshipOptions 
 			if (sessionOwner !== ctx.sessionManager) {
 				throw new Error("Starship session context was replaced");
 			}
+			previewLoaded = undefined;
 			loaded = next;
 			const target = activeTarget;
 			if (target) {
@@ -368,6 +372,11 @@ export default function piStarship(pi: ExtensionAPI, options: PiStarshipOptions 
 				requestRefresh(target);
 				requestGithubPr(target);
 			}
+			refresh();
+		},
+		preview(next, ctx) {
+			if (sessionOwner !== ctx.sessionManager) return;
+			previewLoaded = next;
 			refresh();
 		},
 		renderPreview(preview, width) {
@@ -405,6 +414,7 @@ export default function piStarship(pi: ExtensionAPI, options: PiStarshipOptions 
 	pi.on("session_shutdown", (_event, ctx) => {
 		if (sessionOwner !== ctx.sessionManager) return;
 		sessionOwner = undefined;
+		previewLoaded = undefined;
 		sessionGeneration += 1;
 		menuController.abort(new DOMException("Starship session shut down", "AbortError"));
 		activeTarget = undefined;

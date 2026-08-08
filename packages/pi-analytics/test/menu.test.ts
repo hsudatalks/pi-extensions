@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { resolveMenuScreen, runMenu } from "@narumitw/pi-tui-kit";
+import { resolveMenuScreen, runConfirmation, runMenu } from "@narumitw/pi-tui-kit";
 import { createRpcHarness, createTuiHarness } from "@narumitw/pi-tui-kit/testing";
 import { createMockContext } from "../../../test/support.js";
 import {
@@ -14,6 +14,8 @@ import {
 import type { AnalyticsSnapshot } from "../src/storage/queries.js";
 
 initTheme("dark", false);
+
+const confirmationOptions = { runConfirmation, isCurrent: () => true };
 
 const snapshot: AnalyticsSnapshot = {
 	overview: {
@@ -90,6 +92,17 @@ async function state(
 	controller: ReturnType<typeof createAnalyticsMenu>,
 ): Promise<AnalyticsMenuState> {
 	return controller.getState({ signal: new AbortController().signal });
+}
+
+function withRpcUi(
+	context: ReturnType<typeof createMockContext>,
+	rpc: ReturnType<typeof createRpcHarness>,
+) {
+	const base = context.ctx as unknown as {
+		ui: Record<string, unknown>;
+		[key: string]: unknown;
+	};
+	return { ...base, ui: { ...base.ui, ...rpc.ui } } as never;
 }
 
 test("dashboard exposes seven primary rows and concise settled metrics", async () => {
@@ -201,35 +214,108 @@ test("clear cancellation is side-effect free and confirmation clears committed r
 				return { cleanupIncomplete: false };
 			},
 		}),
+		Date.now,
+		confirmationOptions,
 	);
 	const current = await state(controller);
-	let confirmation = "";
-	const cancelled = createMockContext({
-		hasUI: true,
-		mode: "rpc",
-		confirm: async (_title: string, message: string) => {
-			confirmation = message;
-			return false;
-		},
-	});
+	const cancelledRpc = createRpcHarness([{ kind: "select", response: undefined }]);
+	const cancelled = createMockContext({ hasUI: true, mode: "rpc" });
 	await controller.menu.actions.clearData({
-		ctx: cancelled.ctx,
+		ctx: withRpcUi(cancelled, cancelledRpc),
 		state: current,
 		signal: new AbortController().signal,
 		itemId: "clear",
 	});
+	cancelledRpc.assertConsumed();
 	assert.equal(clears, 0);
-	assert.match(confirmation, /clear all local analytics history/i);
-	assert.match(confirmation, /selected range currently shows 83 response cycles/i);
-	const confirmed = createMockContext({ hasUI: true, mode: "rpc", confirm: async () => true });
+	assert.match(cancelledRpc.dialogs[0]?.title ?? "", /clear all local analytics history/i);
+	assert.match(
+		cancelledRpc.dialogs[0]?.title ?? "",
+		/selected range currently shows 83 response cycles/i,
+	);
+
+	const confirmedRpc = createRpcHarness([{ kind: "select", response: "Delete data" }]);
+	const confirmed = createMockContext({ hasUI: true, mode: "rpc" });
 	await controller.menu.actions.clearData({
-		ctx: confirmed.ctx,
+		ctx: withRpcUi(confirmed, confirmedRpc),
 		state: current,
 		signal: new AbortController().signal,
 		itemId: "clear",
 	});
+	confirmedRpc.assertConsumed();
 	assert.equal(clears, 1);
 	assert.match(confirmed.notifications[0]?.message ?? "", /Cleared local analytics data/);
+});
+
+test("TUI Ctrl+C closes the dashboard from clear confirmation without deleting data", async () => {
+	let clears = 0;
+	const controller = createAnalyticsMenu(
+		source({
+			async clearAll() {
+				clears += 1;
+				return { cleanupIncomplete: false };
+			},
+		}),
+		Date.now,
+		confirmationOptions,
+	);
+	const tui = createTuiHarness({ width: 80, rows: 24 });
+	const context = createMockContext({ hasUI: true, mode: "tui", custom: tui.custom });
+	const clearing = controller.menu.actions.clearData({
+		ctx: context.ctx,
+		state: await state(controller),
+		signal: new AbortController().signal,
+		itemId: "clear",
+	});
+	await tui.waitForOpen();
+	tui.press("ctrl+c");
+	assert.deepEqual(await clearing, { kind: "close" });
+	assert.equal(clears, 0);
+});
+
+test("stale and failed clear confirmations never delete analytics", async () => {
+	let clears = 0;
+	const analyticsSource = source({
+		async clearAll() {
+			clears += 1;
+			return { cleanupIncomplete: false };
+		},
+	});
+	const stale = createAnalyticsMenu(analyticsSource, Date.now, {
+		runConfirmation,
+		isCurrent: () => false,
+	});
+	const staleContext = createMockContext({ hasUI: true, mode: "rpc" });
+	assert.deepEqual(
+		await stale.menu.actions.clearData({
+			ctx: staleContext.ctx,
+			state: await state(stale),
+			signal: new AbortController().signal,
+			itemId: "clear",
+		}),
+		{ kind: "close" },
+	);
+
+	const failed = createAnalyticsMenu(analyticsSource, Date.now, confirmationOptions);
+	const failedContext = createMockContext({
+		hasUI: true,
+		mode: "rpc",
+		select: async () => {
+			throw new Error("confirmation transport failed");
+		},
+	});
+	await assert.rejects(
+		Promise.resolve(
+			failed.menu.actions.clearData({
+				ctx: failedContext.ctx,
+				state: await state(failed),
+				signal: new AbortController().signal,
+				itemId: "clear",
+			}),
+		),
+		/confirmation transport failed/u,
+	);
+	assert.equal(clears, 0);
 });
 
 test("clear reports obsolete files that could not be removed", async () => {
@@ -239,20 +325,28 @@ test("clear reports obsolete files that could not be removed", async () => {
 				return { cleanupIncomplete: true };
 			},
 		}),
+		Date.now,
+		confirmationOptions,
 	);
 	const current = await state(controller);
-	const confirmed = createMockContext({ hasUI: true, mode: "rpc", confirm: async () => true });
+	const rpc = createRpcHarness([{ kind: "select", response: "Delete data" }]);
+	const confirmed = createMockContext({ hasUI: true, mode: "rpc" });
 	await controller.menu.actions.clearData({
-		ctx: confirmed.ctx,
+		ctx: withRpcUi(confirmed, rpc),
 		state: current,
 		signal: new AbortController().signal,
 		itemId: "clear",
 	});
+	rpc.assertConsumed();
 	assert.match(confirmed.notifications[0]?.message ?? "", /Cleared local analytics data/);
 	assert.match(confirmed.notifications[1]?.message ?? "", /still in use/);
 });
 
 test("clear completion remains visible when cancellation races after confirmation", async () => {
+	let startedClear!: () => void;
+	const started = new Promise<void>((resolve) => {
+		startedClear = resolve;
+	});
 	let release!: () => void;
 	const blocked = new Promise<void>((resolve) => {
 		release = resolve;
@@ -260,25 +354,67 @@ test("clear completion remains visible when cancellation races after confirmatio
 	const controller = createAnalyticsMenu(
 		source({
 			async clearAll() {
+				startedClear();
 				await blocked;
 				return { cleanupIncomplete: false };
 			},
 		}),
+		Date.now,
+		confirmationOptions,
 	);
 	const current = await state(controller);
-	const confirmed = createMockContext({ hasUI: true, mode: "rpc", confirm: async () => true });
+	const rpc = createRpcHarness([{ kind: "select", response: "Delete data" }]);
+	const confirmed = createMockContext({ hasUI: true, mode: "rpc" });
 	const owner = new AbortController();
 	const clearing = controller.menu.actions.clearData({
-		ctx: confirmed.ctx,
+		ctx: withRpcUi(confirmed, rpc),
 		state: current,
 		signal: owner.signal,
 		itemId: "clear",
 	});
-	await Promise.resolve();
+	await started;
 	owner.abort();
 	release();
 	assert.deepEqual(await clearing, { kind: "close" });
+	rpc.assertConsumed();
 	assert.match(confirmed.notifications[0]?.message ?? "", /Cleared local analytics data/);
+});
+
+test("session replacement after committed clear suppresses stale UI publication", async () => {
+	let startedClear!: () => void;
+	const started = new Promise<void>((resolve) => {
+		startedClear = resolve;
+	});
+	let release!: () => void;
+	const blocked = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	let current = true;
+	const controller = createAnalyticsMenu(
+		source({
+			async clearAll() {
+				startedClear();
+				await blocked;
+				return { cleanupIncomplete: false };
+			},
+		}),
+		Date.now,
+		{ runConfirmation, isCurrent: () => current },
+	);
+	const rpc = createRpcHarness([{ kind: "select", response: "Delete data" }]);
+	const context = createMockContext({ hasUI: true, mode: "rpc" });
+	const clearing = controller.menu.actions.clearData({
+		ctx: withRpcUi(context, rpc),
+		state: await state(controller),
+		signal: new AbortController().signal,
+		itemId: "clear",
+	});
+	await started;
+	current = false;
+	release();
+	assert.deepEqual(await clearing, { kind: "close" });
+	rpc.assertConsumed();
+	assert.equal(context.notifications.length, 0);
 });
 
 test("empty and unavailable states remain actionable", async () => {

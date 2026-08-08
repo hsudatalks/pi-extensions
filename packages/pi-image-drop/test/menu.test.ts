@@ -10,7 +10,6 @@ import {
 	menuSummary,
 	runImageDropMenuLoad,
 	safeMenuText,
-	showImageDropConfirmDialog,
 	validateLimitInput,
 } from "../src/menu.js";
 import { DEFAULT_SETTINGS } from "../src/settings.js";
@@ -121,17 +120,4 @@ test("Ctrl+C aborts loader work before closing its UI", async () => {
 	assert.equal(result.kind, "closed");
 	assert.equal(abortedBeforeClose, true);
 	assert.equal(tui.isOpen, false);
-});
-
-test("specialized confirmation distinguishes cancellation from closing Image Drop", async () => {
-	async function drive(key: "tui.select.cancel" | "ctrl+c") {
-		const tui = createTuiHarness({ width: 80, rows: 24 });
-		const context = createMockContext({ mode: "tui", custom: tui.custom });
-		const running = showImageDropConfirmDialog(context.ctx, "Save?", "Review");
-		await tui.waitForOpen();
-		tui.press(key);
-		return running;
-	}
-	assert.equal(await drive("ctrl+c"), "close");
-	assert.equal(await drive("tui.select.cancel"), "cancelled");
 });

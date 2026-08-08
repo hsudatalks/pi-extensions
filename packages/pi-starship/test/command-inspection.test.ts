@@ -78,6 +78,7 @@ test("/starship adds Explain footer and Modules without adding direct routes", a
 	await tui.waitForOpen();
 	const frame = tui.render().join("\n");
 	assert.match(frame, /Customize footer/u);
+	assert.match(frame, /Presets/u);
 	assert.match(frame, /Explain footer/u);
 	assert.match(frame, /Modules/u);
 	assert.match(frame, /Configuration/u);
@@ -102,6 +103,7 @@ test("Explain footer is adaptive and lists only currently showing modules", asyn
 		const context = createMockContext({ mode: "tui", hasUI: true, custom: tui.custom });
 		const running = mock.commands.get("starship")?.handler("", context.ctx);
 		await tui.waitForOpen();
+		tui.press("tui.select.down");
 		tui.press("tui.select.down");
 		tui.press("tui.select.confirm");
 		await tui.waitForOpen();
@@ -146,6 +148,7 @@ test("Explain footer has an explicit empty state", async () => {
 	const running = mock.commands.get("starship")?.handler("", context.ctx);
 	await tui.waitForOpen();
 	tui.press("tui.select.down");
+	tui.press("tui.select.down");
 	tui.press("tui.select.confirm");
 	await tui.waitForOpen();
 	assert.match(tui.render().join("\n"), /No modules are currently showing/u);
@@ -168,6 +171,7 @@ test("Modules is searchable, adaptive, terminal-safe, and restores search after 
 		const context = createMockContext({ mode: "tui", hasUI: true, custom: tui.custom });
 		const running = mock.commands.get("starship")?.handler("", context.ctx);
 		await tui.waitForOpen();
+		tui.press("tui.select.down");
 		tui.press("tui.select.down");
 		tui.press("tui.select.down");
 		tui.press("tui.select.confirm");
@@ -230,6 +234,7 @@ test("Modules searches non-rendered module metadata", async () => {
 	await tui.waitForOpen();
 	tui.press("tui.select.down");
 	tui.press("tui.select.down");
+	tui.press("tui.select.down");
 	tui.press("tui.select.confirm");
 	await tui.waitForOpen();
 	tui.setFocused(true);
@@ -256,6 +261,7 @@ test("external module-browser disposal releases the component without writing se
 		const context = createMockContext({ mode: "tui", hasUI: true, custom: tui.custom });
 		const running = Promise.resolve(mock.commands.get("starship")?.handler("", context.ctx));
 		await tui.waitForOpen();
+		tui.press("tui.select.down");
 		tui.press("tui.select.down");
 		tui.press("tui.select.down");
 		tui.press("tui.select.confirm");
@@ -293,6 +299,7 @@ test("Modules honors injected keybindings and distinguishes Back from Close", as
 	const context = createMockContext({ mode: "tui", hasUI: true, custom: tui.custom });
 	const running = mock.commands.get("starship")?.handler("", context.ctx);
 	await tui.waitForOpen();
+	tui.send("j");
 	tui.send("j");
 	tui.send("j");
 	tui.send("y");

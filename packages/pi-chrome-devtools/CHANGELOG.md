@@ -1,5 +1,12 @@
 # @narumitw/pi-chrome-devtools
 
+## 0.50.0
+
+### Minor Changes
+
+- c434669: Add trusted user and project settings for loading unpacked Chrome extensions into an isolated managed Chrome for Testing or Chromium browser.
+- 4d77811: Redesign the Chrome DevTools manager around visible runtime state, staged tool selection with exact review, shallow status/setup/help navigation, and explicit cross-mode behavior.
+
 ## 0.49.4
 
 ### Patch Changes

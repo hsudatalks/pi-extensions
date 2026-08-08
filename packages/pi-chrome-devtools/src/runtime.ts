@@ -1,4 +1,5 @@
 import type { ChildProcess } from "node:child_process";
+import type { EffectiveBrowserSettings } from "./settings.js";
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 9222;
@@ -26,6 +27,12 @@ export interface ChromeDevToolsState {
 	portConfigured: boolean;
 	autoLaunchEnabled: boolean;
 	browserExecutable?: string;
+	extensionPaths: string[];
+	browserExecutableSource: EffectiveBrowserSettings["executablePathSource"];
+	extensionPathsSource: EffectiveBrowserSettings["extensionPathsSource"];
+	settingsFilePath?: string;
+	projectSettingsFilePath?: string;
+	projectSettingsTrusted: boolean;
 	activePageId?: string;
 	managedBrowser?: ManagedBrowser;
 	launchPromise?: Promise<void>;
@@ -42,6 +49,8 @@ export interface ManagedBrowser {
 	port?: number;
 	exited: boolean;
 	ready: boolean;
+	ownerGeneration: number;
+	cleanupPromise?: Promise<void>;
 }
 
 export interface BrowserLaunchAttempt {
@@ -83,7 +92,25 @@ export const state: ChromeDevToolsState = {
 	portConfigured: configuredPortOverride !== undefined,
 	autoLaunchEnabled: process.env.PI_CHROME_DEVTOOLS_AUTO_LAUNCH !== "0",
 	browserExecutable: process.env.PI_CHROME_DEVTOOLS_BROWSER,
+	extensionPaths: [],
+	browserExecutableSource: process.env.PI_CHROME_DEVTOOLS_BROWSER ? "environment" : "default",
+	extensionPathsSource: "default",
+	projectSettingsTrusted: false,
 	shuttingDown: false,
 	sessionGeneration: 0,
 	sessionController: new AbortController(),
 };
+
+export function applyRuntimeBrowserSettings(
+	browser: EffectiveBrowserSettings,
+	paths: { user: string; project?: string },
+	projectTrusted: boolean,
+) {
+	state.browserExecutable = browser.executablePath;
+	state.extensionPaths = [...browser.extensionPaths];
+	state.browserExecutableSource = browser.executablePathSource;
+	state.extensionPathsSource = browser.extensionPathsSource;
+	state.settingsFilePath = paths.user;
+	state.projectSettingsFilePath = paths.project;
+	state.projectSettingsTrusted = projectTrusted;
+}
