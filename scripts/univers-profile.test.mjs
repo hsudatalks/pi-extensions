@@ -106,6 +106,8 @@ test("preserves unrelated packages and credentials across idempotent upgrades", 
 	const settingsPath = join(agentDir, "settings.json");
 	writeFileSync(join(agentDir, "APPEND_SYSTEM.md"), "Keep this user instruction.\n");
 	writeFileSync(join(agentDir, "agents", "executor.md"), "stale executor\n");
+	mkdirSync(join(agentDir, "extensions", "subagent"), { recursive: true });
+	writeFileSync(join(agentDir, "extensions", "subagent", "index.ts"), "stale subagent\n");
 	const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
 	settings.packages.unshift("npm:other-extension");
 	writeFileSync(settingsPath, JSON.stringify(settings));
@@ -130,6 +132,7 @@ test("preserves unrelated packages and credentials across idempotent upgrades", 
 		1,
 	);
 	assert.throws(() => readFileSync(join(agentDir, "agents", "executor.md")), /ENOENT/);
+	assert.throws(() => statSync(join(agentDir, "extensions", "subagent")), /ENOENT/);
 });
 
 test("rejects non-subscription Codex auth and missing OpenCode auth", () => {

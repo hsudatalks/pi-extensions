@@ -122,6 +122,7 @@ export function configureUniversProfile({
 		atomicWrite(join(agentsDir, name), contents, 0o600);
 	}
 	rmSync(join(agentsDir, "executor.md"), { force: true });
+	rmSync(join(agentDir, "extensions", "subagent"), { force: true, recursive: true });
 	atomicWrite(
 		join(agentDir, "APPEND_SYSTEM.md"),
 		mergeManagedSection(readText(join(agentDir, "APPEND_SYSTEM.md")), DELEGATION_GUIDANCE),
