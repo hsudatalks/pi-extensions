@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -17,6 +17,11 @@ function jwt(exp) {
 function fixture() {
 	const root = mkdtempSync(join(tmpdir(), "univers-pi-profile-"));
 	const agentDir = join(root, "agent");
+	for (const name of ["pi-goal", "pi-subagents"]) {
+		const sourceDir = join(agentDir, "univers", "node_modules", "@narumitw", name, "src");
+		mkdirSync(sourceDir, { recursive: true });
+		writeFileSync(join(sourceDir, "index.ts"), "export {};\n");
+	}
 	const codexAuthPath = join(root, "codex-auth.json");
 	writeFileSync(
 		codexAuthPath,
@@ -52,10 +57,10 @@ test("configures a complete filtered Univers profile without leaking credentials
 	const settings = JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf8"));
 	assert.equal(settings.defaultProvider, "opencode-go");
 	assert.equal(settings.defaultModel, "deepseek-v4-flash");
-	assert.deepEqual(settings.packages[0].extensions, [
-		"packages/pi-goal/src/index.ts",
-		"packages/pi-subagents/src/index.ts",
-	]);
+	assert.equal(settings.packages.length, 2);
+	assert.deepEqual(settings.packages[0].extensions, ["src/index.ts"]);
+	assert.equal(settings.packages[0].source.endsWith("/@narumitw/pi-goal"), true);
+	assert.equal(settings.packages[1].source.endsWith("/@narumitw/pi-subagents"), true);
 	const auth = JSON.parse(readFileSync(join(agentDir, "auth.json"), "utf8"));
 	assert.equal(auth["openai-codex"].accountId, "account");
 	assert.equal(auth["openai-codex"].expires, 2_000_000_000_000);
@@ -80,8 +85,9 @@ test("preserves unrelated packages and credentials across idempotent upgrades", 
 	configureUniversProfile({ agentDir, codexAuthPath, forkRef: "new" });
 	const upgraded = JSON.parse(readFileSync(settingsPath, "utf8"));
 	assert.equal(upgraded.packages[0], "npm:other-extension");
-	assert.equal(upgraded.packages.length, 2);
-	assert.equal(upgraded.packages[1].source.endsWith("@new"), true);
+	assert.equal(upgraded.packages.length, 3);
+	assert.equal(upgraded.packages[1].source.endsWith("/@narumitw/pi-goal"), true);
+	assert.equal(upgraded.packages[2].source.endsWith("/@narumitw/pi-subagents"), true);
 	assert.equal(inspectUniversProfile({ agentDir, forkRef: "new" }).openCodeAuth, true);
 });
 
@@ -103,8 +109,12 @@ test("replaces only managed goal, subagent, and fork package entries", () => {
 				"npm:@narumitw/pi-usage",
 				{ source: "git:github.com/hsudatalks/pi-extensions@old" },
 			],
-			"new",
+			"/home/test/.pi/agent",
 		).map((entry) => (typeof entry === "string" ? entry : entry.source)),
-		["npm:@narumitw/pi-usage", "git:github.com/hsudatalks/pi-extensions@new"],
+		[
+			"npm:@narumitw/pi-usage",
+			"/home/test/.pi/agent/univers/node_modules/@narumitw/pi-goal",
+			"/home/test/.pi/agent/univers/node_modules/@narumitw/pi-subagents",
+		],
 	);
 });

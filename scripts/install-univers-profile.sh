@@ -40,6 +40,8 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
 fi
 
 command -v npm >/dev/null 2>&1 || { printf '%s\n' "npm is required" >&2; exit 1; }
+command -v curl >/dev/null 2>&1 || { printf '%s\n' "curl is required" >&2; exit 1; }
+command -v sha256sum >/dev/null 2>&1 || { printf '%s\n' "sha256sum is required" >&2; exit 1; }
 [ -f "$HOME/.codex/auth.json" ] || { printf '%s\n' "Workbench Codex auth is missing" >&2; exit 1; }
 [ "$READ_OPENCODE_KEY" -eq 1 ] || usage
 
@@ -50,7 +52,22 @@ IFS= read -r OPENCODE_KEY || [ -n "$OPENCODE_KEY" ]
 mkdir -p "$HOME/.local/bin"
 npm install --global --prefix "$HOME/.local" "@earendil-works/pi-coding-agent@$PI_VERSION"
 PI_BIN="$HOME/.local/bin/pi"
-"$PI_BIN" install "git:github.com/hsudatalks/pi-extensions@$FORK_REF"
+
+TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TEMP_DIR"' EXIT HUP INT TERM
+RELEASE_URL="https://github.com/hsudatalks/pi-extensions/releases/download/univers-$FORK_REF"
+curl -fsSL "$RELEASE_URL/pi-goal.tgz" -o "$TEMP_DIR/pi-goal.tgz"
+curl -fsSL "$RELEASE_URL/pi-subagents.tgz" -o "$TEMP_DIR/pi-subagents.tgz"
+curl -fsSL "$RELEASE_URL/SHA256SUMS" -o "$TEMP_DIR/SHA256SUMS"
+(cd "$TEMP_DIR" && sha256sum -c SHA256SUMS)
+
+UNIVERS_ROOT="$HOME/.pi/agent/univers"
+mkdir -p "$UNIVERS_ROOT"
+npm install --prefix "$UNIVERS_ROOT" --legacy-peer-deps \
+	"$TEMP_DIR/pi-goal.tgz" \
+	"$TEMP_DIR/pi-subagents.tgz"
+[ -f "$UNIVERS_ROOT/node_modules/@narumitw/pi-goal/src/index.ts" ]
+[ -f "$UNIVERS_ROOT/node_modules/@narumitw/pi-subagents/src/index.ts" ]
 printf '%s' "$OPENCODE_KEY" | node "$SCRIPT_DIR/univers-profile.mjs" \
 	--ref "$FORK_REF" \
 	--opencode-key-stdin
@@ -61,4 +78,5 @@ node "$SCRIPT_DIR/univers-profile.mjs" --ref "$FORK_REF" --check
 "$PI_BIN" --list-models gpt-5.6 | grep -q 'openai-codex.*gpt-5.6-luna'
 "$PI_BIN" --list-models gpt-5.6 | grep -q 'openai-codex.*gpt-5.6-sol'
 "$PI_BIN" --list-models deepseek-v4-flash | grep -q 'opencode-go.*deepseek-v4-flash'
+rm -rf "$HOME/.pi/agent/git/github.com/hsudatalks/pi-extensions"
 printf '%s\n' "Univers Pi profile ready: pi=$PI_VERSION ref=$FORK_REF"

@@ -6,9 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const DEFAULT_FORK_REF = "main";
-export const FORK_SOURCE_PREFIX = "git:github.com/hsudatalks/pi-extensions@";
-
-const EXTENSIONS = ["packages/pi-goal/src/index.ts", "packages/pi-subagents/src/index.ts"];
+const MANAGED_PACKAGE_ROOT = "univers/node_modules/@narumitw";
 
 const AGENTS = {
 	"advisor.md": `---
@@ -88,10 +86,11 @@ export function configureUniversProfile({
 	settings.defaultProvider = "opencode-go";
 	settings.defaultModel = "deepseek-v4-flash";
 	settings.defaultThinkingLevel = "high";
-	settings.packages = mergePackages(settings.packages, forkRef);
+	settings.packages = mergePackages(settings.packages, agentDir);
 
 	atomicWriteJson(settingsPath, settings, 0o600);
 	atomicWriteJson(authPath, auth, 0o600);
+	atomicWrite(join(agentDir, "univers", "fork-ref"), `${forkRef}\n`, 0o600);
 
 	const agentsDir = join(agentDir, "agents");
 	mkdirSync(agentsDir, { recursive: true, mode: 0o700 });
@@ -150,21 +149,26 @@ export function inspectUniversProfile({ agentDir, forkRef = DEFAULT_FORK_REF }) 
 	const auth = readJsonObject(join(agentDir, "auth.json"), {});
 	const subagents = readJsonObject(join(agentDir, "pi-subagents.json"), {});
 	const goal = readJsonObject(join(agentDir, "pi-goal.json"), {});
-	const expectedSource = `${FORK_SOURCE_PREFIX}${forkRef}`;
-	const packageEntry = Array.isArray(settings.packages)
-		? settings.packages.find(
-				(entry) => entry && typeof entry === "object" && entry.source === expectedSource,
+	const packageSources = universPackageSources(agentDir);
+	const packageEntries = Array.isArray(settings.packages)
+		? settings.packages.filter(
+				(entry) => entry && typeof entry === "object" && packageSources.includes(entry.source),
 			)
-		: undefined;
+		: [];
 	return {
 		mainModel:
 			settings.defaultProvider === "opencode-go" && settings.defaultModel === "deepseek-v4-flash",
 		forkPackage:
-			packageEntry !== undefined &&
-			JSON.stringify(packageEntry.extensions) === JSON.stringify(EXTENSIONS) &&
-			JSON.stringify(packageEntry.skills) === "[]" &&
-			JSON.stringify(packageEntry.prompts) === "[]" &&
-			JSON.stringify(packageEntry.themes) === "[]",
+			packageEntries.length === 2 &&
+			packageSources.every((source) => fileExists(join(source, "src", "index.ts"))) &&
+			packageEntries.every(
+				(entry) =>
+					JSON.stringify(entry.extensions) === '["src/index.ts"]' &&
+					JSON.stringify(entry.skills) === "[]" &&
+					JSON.stringify(entry.prompts) === "[]" &&
+					JSON.stringify(entry.themes) === "[]",
+			) &&
+			fileContentEquals(join(agentDir, "univers", "fork-ref"), `${forkRef}\n`),
 		openCodeAuth: validApiKeyCredential(auth["opencode-go"]),
 		codexAuth: validOAuthCredential(auth["openai-codex"]),
 		agents: Object.entries(AGENTS).every(([name, contents]) =>
@@ -185,22 +189,23 @@ export function inspectUniversProfile({ agentDir, forkRef = DEFAULT_FORK_REF }) 
 	};
 }
 
-export function mergePackages(value, forkRef) {
+export function mergePackages(value, agentDir) {
 	const packages = Array.isArray(value) ? value : [];
 	const retained = packages.filter((entry) => {
 		const source = typeof entry === "string" ? entry : entry?.source;
 		if (typeof source !== "string") return true;
 		if (source.startsWith("git:github.com/hsudatalks/pi-extensions")) return false;
+		if (source.includes(`/${MANAGED_PACKAGE_ROOT}/`)) return false;
 		return !/^npm:@narumitw\/(pi-goal|pi-subagents)(?:@[^/]+)?$/.test(source);
 	});
-	retained.push({
-		source: `${FORK_SOURCE_PREFIX}${forkRef}`,
-		extensions: [...EXTENSIONS],
-		skills: [],
-		prompts: [],
-		themes: [],
-	});
+	for (const source of universPackageSources(agentDir)) {
+		retained.push({ source, extensions: ["src/index.ts"], skills: [], prompts: [], themes: [] });
+	}
 	return retained;
+}
+
+function universPackageSources(agentDir) {
+	return ["pi-goal", "pi-subagents"].map((name) => join(agentDir, MANAGED_PACKAGE_ROOT, name));
 }
 
 export function codexOAuthCredential(codexAuth) {
@@ -265,6 +270,16 @@ function validOAuthCredential(value) {
 function fileContentEquals(path, expected) {
 	try {
 		return readFileSync(path, "utf8") === expected;
+	} catch (error) {
+		if (error?.code === "ENOENT") return false;
+		throw error;
+	}
+}
+
+function fileExists(path) {
+	try {
+		readFileSync(path);
+		return true;
 	} catch (error) {
 		if (error?.code === "ENOENT") return false;
 		throw error;
