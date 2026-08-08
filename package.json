@@ -37,6 +37,8 @@
 		"typecheck": "node ./scripts/run-typechecks.mjs",
 		"build": "npm --workspaces --if-present run build",
 		"test": "node ./scripts/run-tests.mjs",
+		"test:univers-profile": "node --test ./scripts/univers-profile.test.mjs",
+		"check:univers-profile": "sh -n ./scripts/install-univers-profile.sh && npm run test:univers-profile",
 		"check": "npm run build && node ./scripts/run-checks.mjs",
 		"precommit": "npm run biome:check && npm run typecheck",
 		"prepare": "node ./scripts/prepare.mjs",
