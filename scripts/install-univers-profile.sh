@@ -7,11 +7,12 @@ CHECK_ONLY=0
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 usage() {
-	printf '%s\n' "Usage: $0 --ref <commit> [--check] [--opencode-key-stdin]" >&2
+	printf '%s\n' "Usage: $0 --ref <commit> [--check] [--opencode-key-stdin | --zai-coding-cn-key-stdin]" >&2
 	exit 2
 }
 
 READ_OPENCODE_KEY=0
+READ_ZAI_CODING_CN_KEY=0
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--ref)
@@ -27,11 +28,16 @@ while [ "$#" -gt 0 ]; do
 			READ_OPENCODE_KEY=1
 			shift
 			;;
+		--zai-coding-cn-key-stdin)
+			READ_ZAI_CODING_CN_KEY=1
+			shift
+			;;
 		*) usage ;;
 	esac
 done
 
 [ -n "$FORK_REF" ] || usage
+[ "$READ_OPENCODE_KEY" -eq 0 ] || [ "$READ_ZAI_CODING_CN_KEY" -eq 0 ] || usage
 command -v node >/dev/null 2>&1 || { printf '%s\n' "Node.js is required" >&2; exit 1; }
 
 if [ "$CHECK_ONLY" -eq 1 ]; then
@@ -44,9 +50,14 @@ command -v curl >/dev/null 2>&1 || { printf '%s\n' "curl is required" >&2; exit 
 command -v sha256sum >/dev/null 2>&1 || { printf '%s\n' "sha256sum is required" >&2; exit 1; }
 [ -f "$HOME/.codex/auth.json" ] || { printf '%s\n' "Workbench Codex auth is missing" >&2; exit 1; }
 OPENCODE_KEY=""
+ZAI_CODING_CN_KEY=""
 if [ "$READ_OPENCODE_KEY" -eq 1 ]; then
 	IFS= read -r OPENCODE_KEY || [ -n "$OPENCODE_KEY" ]
 	[ -n "$OPENCODE_KEY" ] || { printf '%s\n' "OpenCode Go key is empty" >&2; exit 1; }
+fi
+if [ "$READ_ZAI_CODING_CN_KEY" -eq 1 ]; then
+	IFS= read -r ZAI_CODING_CN_KEY || [ -n "$ZAI_CODING_CN_KEY" ]
+	[ -n "$ZAI_CODING_CN_KEY" ] || { printf '%s\n' "Z.AI Coding CN key is empty" >&2; exit 1; }
 fi
 
 mkdir -p "$HOME/.local/bin"
@@ -74,15 +85,21 @@ if [ "$READ_OPENCODE_KEY" -eq 1 ]; then
 	printf '%s' "$OPENCODE_KEY" | node "$SCRIPT_DIR/univers-profile.mjs" \
 		--ref "$FORK_REF" \
 		--opencode-key-stdin
+elif [ "$READ_ZAI_CODING_CN_KEY" -eq 1 ]; then
+	printf '%s' "$ZAI_CODING_CN_KEY" | node "$SCRIPT_DIR/univers-profile.mjs" \
+		--ref "$FORK_REF" \
+		--zai-coding-cn-key-stdin
 else
 	node "$SCRIPT_DIR/univers-profile.mjs" --ref "$FORK_REF"
 fi
 OPENCODE_KEY=""
+ZAI_CODING_CN_KEY=""
 
 node "$SCRIPT_DIR/univers-profile.mjs" --ref "$FORK_REF" --check
 "$PI_BIN" auth print-bearer-token --provider openai-codex >/dev/null
 "$PI_BIN" --list-models gpt-5.6 | grep -q 'openai-codex.*gpt-5.6-luna'
 "$PI_BIN" --list-models gpt-5.6 | grep -q 'openai-codex.*gpt-5.6-sol'
 "$PI_BIN" --list-models deepseek-v4-flash | grep -q 'opencode-go.*deepseek-v4-flash'
+"$PI_BIN" --list-models glm-5.2 | grep -q 'zai-coding-cn.*glm-5.2'
 rm -rf "$HOME/.pi/agent/git/github.com/hsudatalks/pi-extensions"
 printf '%s\n' "Univers Pi profile ready: pi=$PI_VERSION ref=$FORK_REF"

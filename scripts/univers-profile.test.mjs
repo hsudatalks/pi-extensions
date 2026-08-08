@@ -45,11 +45,13 @@ test("configures a complete filtered Univers profile without leaking credentials
 		codexAuthPath,
 		forkRef: "abc123",
 		opencodeKey: "opencode-secret",
+		zaiCodingCnKey: "zai-secret",
 	});
 	assert.deepEqual(result, {
 		mainModel: true,
 		forkPackage: true,
 		openCodeAuth: true,
+		zaiCodingCnAuth: true,
 		codexAuth: true,
 		agents: true,
 		delegationPolicy: true,
@@ -66,6 +68,8 @@ test("configures a complete filtered Univers profile without leaking credentials
 	const auth = JSON.parse(readFileSync(join(agentDir, "auth.json"), "utf8"));
 	assert.equal(auth["openai-codex"].accountId, "account");
 	assert.equal(auth["openai-codex"].expires, 2_000_000_000_000);
+	assert.equal(auth["zai-coding-cn"].type, "api_key");
+	assert.equal(auth["zai-coding-cn"].key, "zai-secret");
 	assert.equal(statSync(join(agentDir, "auth.json")).mode & 0o777, 0o600);
 	assert.equal(
 		readFileSync(join(agentDir, "agents", "validator.md"), "utf8").includes("luna:high"),
@@ -75,6 +79,9 @@ test("configures a complete filtered Univers profile without leaking credentials
 	assert.equal(advisor.includes("tools: read,grep,find,ls,bash,edit,write"), true);
 	assert.equal(advisor.includes("Do not modify files"), false);
 	assert.equal(advisor.includes("edit the files, run focused verification"), true);
+	const glmSpecialist = readFileSync(join(agentDir, "agents", "glm-specialist.md"), "utf8");
+	assert.equal(glmSpecialist.includes("model: zai-coding-cn/glm-5.2:high"), true);
+	assert.equal(glmSpecialist.includes("tools: read,grep,find,ls,bash,edit,write"), true);
 	assert.equal(
 		readFileSync(join(agentDir, "APPEND_SYSTEM.md"), "utf8").includes(
 			"use stateful delegation so it retains its full read, write, edit, and command tools",
@@ -82,13 +89,20 @@ test("configures a complete filtered Univers profile without leaking credentials
 		true,
 	);
 	assert.equal(JSON.stringify(settings).includes("opencode-secret"), false);
+	assert.equal(JSON.stringify(settings).includes("zai-secret"), false);
 	writeFileSync(join(agentDir, "agents", "validator.md"), "stale");
 	assert.equal(inspectUniversProfile({ agentDir, forkRef: "abc123" }).agents, false);
 });
 
 test("preserves unrelated packages and credentials across idempotent upgrades", () => {
 	const { agentDir, codexAuthPath } = fixture();
-	configureUniversProfile({ agentDir, codexAuthPath, forkRef: "old", opencodeKey: "key" });
+	configureUniversProfile({
+		agentDir,
+		codexAuthPath,
+		forkRef: "old",
+		opencodeKey: "key",
+		zaiCodingCnKey: "zai-key",
+	});
 	const settingsPath = join(agentDir, "settings.json");
 	writeFileSync(join(agentDir, "APPEND_SYSTEM.md"), "Keep this user instruction.\n");
 	writeFileSync(join(agentDir, "agents", "executor.md"), "stale executor\n");
@@ -103,6 +117,7 @@ test("preserves unrelated packages and credentials across idempotent upgrades", 
 	assert.equal(upgraded.packages[1].source.endsWith("/@narumitw/pi-goal"), true);
 	assert.equal(upgraded.packages[2].source.endsWith("/@narumitw/pi-subagents"), true);
 	assert.equal(inspectUniversProfile({ agentDir, forkRef: "new" }).openCodeAuth, true);
+	assert.equal(inspectUniversProfile({ agentDir, forkRef: "new" }).zaiCodingCnAuth, true);
 	assert.equal(
 		readFileSync(join(agentDir, "APPEND_SYSTEM.md"), "utf8").includes(
 			"Keep this user instruction.",
@@ -123,6 +138,16 @@ test("rejects non-subscription Codex auth and missing OpenCode auth", () => {
 	assert.throws(
 		() => configureUniversProfile({ agentDir, codexAuthPath, forkRef: "main" }),
 		/OpenCode Go authentication is missing/,
+	);
+	assert.throws(
+		() =>
+			configureUniversProfile({
+				agentDir,
+				codexAuthPath,
+				forkRef: "main",
+				opencodeKey: "key",
+			}),
+		/Z.AI Coding CN authentication is missing/,
 	);
 });
 

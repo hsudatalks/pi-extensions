@@ -150,11 +150,13 @@ pi update --extensions
 
 This fork includes an idempotent Workbench profile installer for the Univers deployment. It
 keeps DeepSeek V4 Flash as the root Pi model, imports the current Workbench's own ChatGPT Codex
-subscription into Pi, and installs bounded Luna explorer/validator and Sol advisor roles. Only the
+subscription into Pi, and installs bounded Luna explorer/validator, Sol advisor, and GLM-5.2
+specialist roles. Only the
 forked Goal and subagent extension entrypoints are enabled.
 
 ```bash
 scripts/install-univers-profile.sh --ref <tested-commit> --opencode-key-stdin
+scripts/install-univers-profile.sh --ref <tested-commit> --zai-coding-cn-key-stdin
 scripts/install-univers-profile.sh --ref <tested-commit> --check
 ```
 

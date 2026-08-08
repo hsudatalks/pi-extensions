@@ -16,6 +16,7 @@ You are the primary implementation agent. Own normal investigation, editing, tes
 
 - Use the explorer for unfamiliar or cross-cutting code, visual or image evidence, broad reconnaissance, or when key facts remain uncertain.
 - Use the advisor for consequential architecture, difficult root-cause analysis, security or reliability risk, or a real choice between competing designs. When the advisor needs to implement or repair the result, use stateful delegation so it retains its full read, write, edit, and command tools; reserve subagent_consult for analysis that must remain read-only.
+- Use the GLM specialist for an independent implementation path, Chinese-language or China-ecosystem work, or when the primary model is stuck and a materially different model is likely to help.
 - Use the validator after user-visible, release-bound, cross-module, or otherwise high-risk changes when independent acceptance evidence is valuable.
 - Do not delegate short, obvious, well-localized work; do not ask a specialist to repeat evidence already established; do not delegate merely to consume subscription capacity.
 - Run at most one specialist at a time. Give it a bounded question and concrete acceptance criteria, then integrate its evidence yourself. Do not delegate recursively.
@@ -31,6 +32,16 @@ model: openai-codex/gpt-5.6-sol:high
 
 Act as a senior technical advisor and implementation specialist. Analyze architecture, risks, evidence, and proposed changes.
 When the delegated task asks for implementation or repair, edit the files, run focused verification, and leave the workspace in a coherent state. Otherwise return a decisive recommendation with exact evidence.
+`,
+	"glm-specialist.md": `---
+name: glm-specialist
+description: GLM-5.2 specialist for independent analysis, implementation, and verification
+tools: read,grep,find,ls,bash,edit,write
+model: zai-coding-cn/glm-5.2:high
+---
+
+Act as an independent senior implementation specialist. Investigate the task from first principles, edit files when implementation is requested, and run focused verification.
+Return a concise account of decisions, changed files, verification evidence, and remaining risks. Do not delegate recursively.
 `,
 	"explorer.md": `---
 name: explorer
@@ -61,6 +72,7 @@ export function configureUniversProfile({
 	codexAuthPath,
 	forkRef = DEFAULT_FORK_REF,
 	opencodeKey,
+	zaiCodingCnKey,
 }) {
 	if (!agentDir) throw new Error("agentDir is required");
 	if (!codexAuthPath) throw new Error("codexAuthPath is required");
@@ -85,6 +97,13 @@ export function configureUniversProfile({
 	}
 	if (!validApiKeyCredential(auth["opencode-go"])) {
 		throw new Error("OpenCode Go authentication is missing; provide --opencode-key-stdin");
+	}
+	if (zaiCodingCnKey !== undefined) {
+		if (!zaiCodingCnKey.trim()) throw new Error("Z.AI Coding CN key is empty");
+		auth["zai-coding-cn"] = { type: "api_key", key: zaiCodingCnKey.trim() };
+	}
+	if (!validApiKeyCredential(auth["zai-coding-cn"])) {
+		throw new Error("Z.AI Coding CN authentication is missing; provide --zai-coding-cn-key-stdin");
 	}
 
 	settings.defaultProvider = "opencode-go";
@@ -115,6 +134,7 @@ export function configureUniversProfile({
 			agents: {
 				advisor: { thinkingLevel: "high", timeoutMs: 1_800_000 },
 				explorer: { thinkingLevel: "medium", timeoutMs: 900_000 },
+				"glm-specialist": { thinkingLevel: "high", timeoutMs: 1_800_000 },
 				validator: { thinkingLevel: "high", timeoutMs: 900_000 },
 			},
 			blocking: { enabled: true },
@@ -122,12 +142,12 @@ export function configureUniversProfile({
 				enabled: true,
 				transport: "subprocess",
 				completionDelivery: "auto-resume",
-				maxAgents: 3,
+				maxAgents: 4,
 				maxActiveTurns: 1,
 				maxChildrenPerAgent: 1,
 				maxDepth: 0,
 				idleTtlMs: 300_000,
-				maxStoredAgents: 6,
+				maxStoredAgents: 8,
 				retentionDays: 3,
 			},
 			consult: { resources: "project-context" },
@@ -179,6 +199,7 @@ export function inspectUniversProfile({ agentDir, forkRef = DEFAULT_FORK_REF }) 
 			) &&
 			fileContentEquals(join(agentDir, "univers", "fork-ref"), `${forkRef}\n`),
 		openCodeAuth: validApiKeyCredential(auth["opencode-go"]),
+		zaiCodingCnAuth: validApiKeyCredential(auth["zai-coding-cn"]),
 		codexAuth: validOAuthCredential(auth["openai-codex"]),
 		agents:
 			Object.entries(AGENTS).every(([name, contents]) =>
@@ -187,14 +208,14 @@ export function inspectUniversProfile({ agentDir, forkRef = DEFAULT_FORK_REF }) 
 		delegationPolicy: readText(join(agentDir, "APPEND_SYSTEM.md")).includes(DELEGATION_GUIDANCE),
 		subagents:
 			JSON.stringify(Object.keys(subagents.agents ?? {}).sort()) ===
-				JSON.stringify(["advisor", "explorer", "validator"]) &&
+				JSON.stringify(["advisor", "explorer", "glm-specialist", "validator"]) &&
 			subagents.stateful?.enabled === true &&
 			subagents.stateful?.transport === "subprocess" &&
 			subagents.stateful?.completionDelivery === "auto-resume" &&
-			subagents.stateful?.maxAgents === 3 &&
+			subagents.stateful?.maxAgents === 4 &&
 			subagents.stateful?.maxActiveTurns === 1 &&
 			subagents.stateful?.maxDepth === 0 &&
-			subagents.stateful?.maxStoredAgents === 6,
+			subagents.stateful?.maxStoredAgents === 8,
 		goal:
 			goal.toolVisibility === "always" &&
 			goal.experimental?.goals === false &&
@@ -350,11 +371,13 @@ function parseArgs(argv) {
 		forkRef: DEFAULT_FORK_REF,
 		check: false,
 		opencodeKeyStdin: false,
+		zaiCodingCnKeyStdin: false,
 	};
 	for (let index = 0; index < argv.length; index += 1) {
 		const argument = argv[index];
 		if (argument === "--check") options.check = true;
 		else if (argument === "--opencode-key-stdin") options.opencodeKeyStdin = true;
+		else if (argument === "--zai-coding-cn-key-stdin") options.zaiCodingCnKeyStdin = true;
 		else if (argument === "--agent-dir") options.agentDir = argv[++index];
 		else if (argument === "--codex-auth") options.codexAuthPath = argv[++index];
 		else if (argument === "--ref") options.forkRef = argv[++index];
@@ -365,11 +388,17 @@ function parseArgs(argv) {
 
 async function main() {
 	const options = parseArgs(process.argv.slice(2));
+	if (options.opencodeKeyStdin && options.zaiCodingCnKeyStdin) {
+		throw new Error("Only one key may be read from stdin per invocation");
+	}
+	const stdinKey =
+		options.opencodeKeyStdin || options.zaiCodingCnKeyStdin ? await readStdin() : undefined;
 	const result = options.check
 		? inspectUniversProfile(options)
 		: configureUniversProfile({
 				...options,
-				opencodeKey: options.opencodeKeyStdin ? await readStdin() : undefined,
+				opencodeKey: options.opencodeKeyStdin ? stdinKey : undefined,
+				zaiCodingCnKey: options.zaiCodingCnKeyStdin ? stdinKey : undefined,
 			});
 	process.stdout.write(`${JSON.stringify(result)}\n`);
 	if (!Object.values(result).every(Boolean)) process.exitCode = 1;
