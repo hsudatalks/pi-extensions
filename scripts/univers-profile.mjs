@@ -76,7 +76,9 @@ export function configureUniversProfile({
 	const auth = readJsonObject(authPath, {});
 	const codexAuth = readJsonObject(codexAuthPath);
 
-	auth["openai-codex"] = codexOAuthCredential(codexAuth);
+	const codexCredential = codexOAuthCredential(codexAuth);
+	const existingCodexCredential = auth["openai-codex"];
+	auth["openai-codex"] = newerMatchingOAuth(existingCodexCredential, codexCredential);
 	if (opencodeKey !== undefined) {
 		if (!opencodeKey.trim()) throw new Error("OpenCode Go key is empty");
 		auth["opencode-go"] = { type: "api_key", key: opencodeKey.trim() };
@@ -236,6 +238,17 @@ export function codexOAuthCredential(codexAuth) {
 		expires: jwtExpiryMs(tokens.access_token),
 		accountId: tokens.account_id,
 	};
+}
+
+export function newerMatchingOAuth(existing, imported) {
+	if (
+		validOAuthCredential(existing) &&
+		existing.accountId === imported.accountId &&
+		existing.expires > imported.expires
+	) {
+		return existing;
+	}
+	return imported;
 }
 
 export function jwtExpiryMs(token) {

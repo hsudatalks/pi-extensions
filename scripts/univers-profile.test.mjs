@@ -8,6 +8,7 @@ import {
 	configureUniversProfile,
 	inspectUniversProfile,
 	mergePackages,
+	newerMatchingOAuth,
 } from "./univers-profile.mjs";
 
 function jwt(exp) {
@@ -136,4 +137,18 @@ test("replaces only managed goal, subagent, and fork package entries", () => {
 			"/home/test/.pi/agent/univers/node_modules/@narumitw/pi-subagents",
 		],
 	);
+});
+
+test("preserves a newer Pi OAuth credential only for the same ChatGPT account", () => {
+	const imported = {
+		type: "oauth",
+		access: "old-access",
+		refresh: "old-refresh",
+		expires: 100,
+		accountId: "account-a",
+	};
+	const newer = { ...imported, access: "new-access", refresh: "new-refresh", expires: 200 };
+	assert.equal(newerMatchingOAuth(newer, imported), newer);
+	assert.equal(newerMatchingOAuth({ ...newer, accountId: "account-b" }, imported), imported);
+	assert.equal(newerMatchingOAuth({ ...newer, expires: 50 }, imported), imported);
 });
